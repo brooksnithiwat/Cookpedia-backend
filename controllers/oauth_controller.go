@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -89,72 +88,54 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 	var user models.User
 
 	// First, try to find user by Google ID
-	err := config.DB.QueryRow(`
-		SELECT id, username, email, google_id, profile_picture, provider, created_at, updated_at 
-		FROM users WHERE google_id = $1`, googleUser.ID).Scan(
-		&user.ID, &user.Username, &user.Email, &user.GoogleID,
-		&user.ProfilePicture, &user.Provider, &user.CreatedAt, &user.UpdatedAt)
-
+	err := config.GormDB.Where("google_id = ?", googleUser.ID).First(&user).Error
 	if err == nil {
 		// User found, update their info
-		_, updateErr := config.DB.Exec(`
-			UPDATE users SET email = $1, username = $2, profile_picture = $3, updated_at = $4 
-			WHERE google_id = $5`,
-			googleUser.Email, googleUser.Name, googleUser.Picture, time.Now(), googleUser.ID)
-		if updateErr != nil {
+		user.Email = googleUser.Email
+		user.Username = googleUser.Name
+		user.ProfilePicture = googleUser.Picture
+		user.UpdatedAt = time.Now()
+		if updateErr := config.GormDB.Save(&user).Error; updateErr != nil {
 			return nil, updateErr
 		}
 		return &user, nil
 	}
 
-	if err != sql.ErrNoRows {
+	if err.Error() != "record not found" {
 		return nil, err
 	}
 
 	// User not found by Google ID, check by email
-	err = config.DB.QueryRow(`
-		SELECT id, username, email, google_id, profile_picture, provider, created_at, updated_at 
-		FROM users WHERE email = $1`, googleUser.Email).Scan(
-		&user.ID, &user.Username, &user.Email, &user.GoogleID,
-		&user.ProfilePicture, &user.Provider, &user.CreatedAt, &user.UpdatedAt)
-
+	err = config.GormDB.Where("email = ?", googleUser.Email).First(&user).Error
 	if err == nil {
 		// User exists with same email, link Google account
-		_, updateErr := config.DB.Exec(`
-			UPDATE users SET google_id = $1, profile_picture = $2, updated_at = $3 
-			WHERE email = $4`,
-			googleUser.ID, googleUser.Picture, time.Now(), googleUser.Email)
-		if updateErr != nil {
-			return nil, updateErr
-		}
 		user.GoogleID = googleUser.ID
 		user.ProfilePicture = googleUser.Picture
+		user.UpdatedAt = time.Now()
+		if updateErr := config.GormDB.Save(&user).Error; updateErr != nil {
+			return nil, updateErr
+		}
 		return &user, nil
 	}
 
-	if err != sql.ErrNoRows {
+	if err.Error() != "record not found" {
 		return nil, err
 	}
 
 	// Create new user
 	now := time.Now()
-	err = config.DB.QueryRow(`
-		INSERT INTO users (username, email, google_id, profile_picture, provider, created_at, updated_at) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		googleUser.Name, googleUser.Email, googleUser.ID, googleUser.Picture, "google", now, now).Scan(&user.ID)
-
-	if err != nil {
+	user = models.User{
+		Username:       googleUser.Name,
+		Email:          googleUser.Email,
+		GoogleID:       googleUser.ID,
+		ProfilePicture: googleUser.Picture,
+		Provider:       "google",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := config.GormDB.Create(&user).Error; err != nil {
 		return nil, err
 	}
-
-	user.Username = googleUser.Name
-	user.Email = googleUser.Email
-	user.GoogleID = googleUser.ID
-	user.ProfilePicture = googleUser.Picture
-	user.Provider = "google"
-	user.CreatedAt = now
-	user.UpdatedAt = now
-
 	return &user, nil
 }
 

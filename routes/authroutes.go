@@ -3,6 +3,7 @@ package routes
 import (
 	"go-auth/controllers"
 	jwtmiddleware "go-auth/middleware"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -26,7 +27,7 @@ func Init(e *echo.Echo) {
 	// Protected routes
 	api := e.Group("/api")
 	api.Use(jwtmiddleware.JWTMiddleware())
-	
+
 	api.GET("/profile", func(c echo.Context) error {
 		userID := c.Get("user_id")
 		return c.JSON(200, echo.Map{
