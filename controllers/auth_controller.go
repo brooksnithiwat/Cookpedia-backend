@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 
 	"go-auth/config"
@@ -58,7 +59,18 @@ func GetCurrentUser(c echo.Context) error {
 	}
 
 	var user models.User
-	err := config.GormDB.First(&user, userID).Error
+	var userIDInt int
+	switch v := userID.(type) {
+	case int:
+		userIDInt = v
+	case float64:
+		userIDInt = int(v)
+	case string:
+		fmt.Sscanf(v, "%d", &userIDInt)
+	default:
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid user_id type"})
+	}
+	err := config.GormDB.First(&user, "user_id = ?", userIDInt).Error
 	if err != nil {
 		if err.Error() == "record not found" {
 			return c.JSON(http.StatusNotFound, echo.Map{"message": "User not found"})

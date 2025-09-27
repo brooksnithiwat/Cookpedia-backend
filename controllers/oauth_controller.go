@@ -16,13 +16,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// GoogleLogin initiates the Google OAuth flow
+// GoogleLogin: เริ่ม OAuth flow และคืน URL ให้ frontend
 func GoogleLogin(c echo.Context) error {
 	state := generateRandomState()
-
-	// Store state in session or cache (for production, use Redis/database)
-	// For now, we'll trust the state verification in callback
-
 	url := config.GoogleOAuthConfig.AuthCodeURL(state)
 	return c.JSON(http.StatusOK, echo.Map{
 		"auth_url": url,
@@ -30,21 +26,18 @@ func GoogleLogin(c echo.Context) error {
 	})
 }
 
-// GoogleCallback handles the callback from Google OAuth
+// GoogleCallback: รับ callback จาก Google, ดึง user info, login/signup, ออก token, redirect หรือคืน JSON
 func GoogleCallback(c echo.Context) error {
 	code := c.QueryParam("code")
-
 	if code == "" {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Authorization code not provided"})
 	}
 
-	// Exchange code for token
 	token, err := config.GoogleOAuthConfig.Exchange(c.Request().Context(), code)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Failed to exchange code for token"})
 	}
 
-	// Get user info from Google
 	client := config.GoogleOAuthConfig.Client(c.Request().Context(), token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
@@ -57,77 +50,62 @@ func GoogleCallback(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to decode user info"})
 	}
 
-	// Check if user exists in database
 	user, err := findOrCreateUser(googleUser)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Database error"})
 	}
 
-	// Generate JWT token
-	jwtToken, err := generateJWTToken(user.ID)
+	tokenStr, err := generateJWTToken(user.ID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
 
-	// Redirect to frontend with token
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {
-		// If no frontend URL, return JSON response
-		return c.JSON(http.StatusOK, echo.Map{
-			"token": jwtToken,
-			"user":  user,
-		})
+		return c.JSON(http.StatusOK, echo.Map{"token": tokenStr, "user": user})
 	}
-
-	// Redirect to frontend with token as query parameter
-	redirectURL := fmt.Sprintf("%s/auth/success?token=%s", frontendURL, jwtToken)
+	redirectURL := fmt.Sprintf("%s/auth/success?token=%s", frontendURL, tokenStr)
 	return c.Redirect(http.StatusFound, redirectURL)
 }
 
+// findOrCreateUser: หา user จาก google_id/email หรือสร้างใหม่
 func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 	var user models.User
 
-	// First, try to find user by Google ID
 	err := config.GormDB.Where("google_id = ?", googleUser.ID).First(&user).Error
 	if err == nil {
-		// User found, update their info
 		user.Email = googleUser.Email
 		user.Username = googleUser.Name
 		user.ProfilePicture = googleUser.Picture
 		user.UpdatedAt = time.Now()
-		if updateErr := config.GormDB.Save(&user).Error; updateErr != nil {
-			return nil, updateErr
+		if err := config.GormDB.Save(&user).Error; err != nil {
+			return nil, err
 		}
 		return &user, nil
 	}
-
 	if err.Error() != "record not found" {
 		return nil, err
 	}
 
-	// User not found by Google ID, check by email
 	err = config.GormDB.Where("email = ?", googleUser.Email).First(&user).Error
 	if err == nil {
-		// User exists with same email, link Google account
-		user.GoogleID = googleUser.ID
+		user.GoogleID = &googleUser.ID
 		user.ProfilePicture = googleUser.Picture
 		user.UpdatedAt = time.Now()
-		if updateErr := config.GormDB.Save(&user).Error; updateErr != nil {
-			return nil, updateErr
+		if err := config.GormDB.Save(&user).Error; err != nil {
+			return nil, err
 		}
 		return &user, nil
 	}
-
 	if err.Error() != "record not found" {
 		return nil, err
 	}
 
-	// Create new user
 	now := time.Now()
 	user = models.User{
 		Username:       googleUser.Name,
 		Email:          googleUser.Email,
-		GoogleID:       googleUser.ID,
+		GoogleID:       &googleUser.ID,
 		ProfilePicture: googleUser.Picture,
 		Provider:       "google",
 		CreatedAt:      now,
@@ -139,6 +117,7 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 	return &user, nil
 }
 
+// generateJWTToken: สร้าง JWT token สำหรับ user
 func generateJWTToken(userID int) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
@@ -149,6 +128,7 @@ func generateJWTToken(userID int) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
+// generateRandomState: สุ่ม state สำหรับ OAuth
 func generateRandomState() string {
 	b := make([]byte, 32)
 	rand.Read(b)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // AuthService ให้บริการเกี่ยวกับการยืนยันตัวตน เช่น สมัครสมาชิกและเข้าสู่ระบบ
@@ -32,7 +33,7 @@ func (s *AuthService) Register(user *models.User) error {
 	err := config.GormDB.Where("username = ? OR email = ?", user.Username, user.Email).First(&existing).Error
 	if err == nil {
 		return ErrUserExists
-	} else if err != nil && err.Error() != "record not found" {
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 
@@ -44,6 +45,7 @@ func (s *AuthService) Register(user *models.User) error {
 	now := time.Now()
 	user.Password = string(hashedPassword)
 	user.Provider = "local"
+	user.GoogleID = nil // set NULL ใน DB
 	user.CreatedAt = now
 	user.UpdatedAt = now
 
