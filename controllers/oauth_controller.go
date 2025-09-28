@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"go-auth/config"
 	"go-auth/models"
 	"net/http"
@@ -57,7 +58,7 @@ func GoogleCallback(c echo.Context) error {
 
 	user, err := findOrCreateUser(googleUser)
 	if err != nil {
-		c.Logger().Error(err) // log ฝั่ง server
+		c.Logger().Error(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{
 			"message": "Database error",
 			"error":   err.Error(),
@@ -69,7 +70,14 @@ func GoogleCallback(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
 
-	// ✅ return JSON เสมอ
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL != "" {
+		// ✅ redirect ไปหน้า frontend ถ้ามี
+		redirectURL := fmt.Sprintf("%s/auth/success?token=%s", frontendURL, tokenStr)
+		return c.Redirect(http.StatusFound, redirectURL)
+	}
+
+	// ✅ ถ้าไม่มี frontend URL → return JSON
 	return c.JSON(http.StatusOK, echo.Map{
 		"token": tokenStr,
 		"user":  user,
