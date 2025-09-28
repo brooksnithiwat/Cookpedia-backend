@@ -11,12 +11,12 @@ import (
 )
 
 // UploadFile uploads a file to Supabase Storage and returns the public URL
-func UploadFile(file multipart.File, fileHeader *multipart.FileHeader, userID interface{}) (string, error) {
+func UploadFile(file multipart.File, fileHeader *multipart.FileHeader, userID interface{}, pathPrefix string) (string, error) {
 	supabaseURL := os.Getenv("SUPABASE_URL")
 	bucket := os.Getenv("SUPABASE_BUCKET_NAME")
 	anonKey := os.Getenv("SUPABASE_ANON_KEY")
 
-	filename := fmt.Sprintf("ProfileImage/profile_%v%s", userID, fileHeader.Filename)
+	filename := fmt.Sprintf("%s_%v%s", pathPrefix, userID, fileHeader.Filename)
 	url := fmt.Sprintf("%s/storage/v1/object/%s/%s", supabaseURL, bucket, filename)
 
 	// Read file into buffer

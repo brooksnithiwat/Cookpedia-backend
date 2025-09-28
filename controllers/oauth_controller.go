@@ -103,6 +103,7 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 		Email:    googleUser.Email,
 		GoogleID: &googleUser.ID,
 		Provider: "google",
+		Role:     "user",
 	}
 	if err := config.GormDB.Create(&user).Error; err != nil {
 		return nil, err

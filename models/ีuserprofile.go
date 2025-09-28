@@ -1,10 +1,10 @@
 package models
 
 type UserProfile struct {
-	Firstname string `json:"firstname"`
-	Lastname  string `json:"lastname"`
-	Email     string `json:"email"`
-	Phone     string `json:"phone"`
-	AboutMe   string `json:"aboutme"`
-	ImageURL  string `json:"image_url"`
+	Firstname string `json:"firstname" form:"firstname"`
+	Lastname  string `json:"lastname" form:"lastname"`
+	Email     string `json:"email" form:"email"`
+	Phone     string `json:"phone" form:"phone"`
+	AboutMe   string `json:"aboutme" form:"aboutme"`
+	ImageURL  string `json:"image_url" form:"image_url"`
 }
