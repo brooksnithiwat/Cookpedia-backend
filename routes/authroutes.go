@@ -47,4 +47,5 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	// api.POST("/user/editpost", authController.EditPost)
 	// api.POST("/user/deletepost", authController.DeletePost)
 	// api.POST("/user/ratepost", authController.RatePost)
+	
 }

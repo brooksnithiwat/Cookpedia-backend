@@ -4,16 +4,17 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	"go-auth/config"
+	"go-auth/models"
 	"net/http"
 	"os"
 	"time"
 
-	"go-auth/config"
-	"go-auth/models"
+	"errors"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
+	"gorm.io/gorm"
 )
 
 // GoogleLogin: เริ่ม OAuth flow และคืน URL ให้ frontend
@@ -26,7 +27,7 @@ func GoogleLogin(c echo.Context) error {
 	})
 }
 
-// GoogleCallback: รับ callback จาก Google, ดึง user info, login/signup, ออก token, redirect หรือคืน JSON
+// GoogleCallback: รับ callback จาก Google, ดึง user info, login/signup, ออก token
 func GoogleCallback(c echo.Context) error {
 	code := c.QueryParam("code")
 	if code == "" {
@@ -52,7 +53,10 @@ func GoogleCallback(c echo.Context) error {
 
 	user, err := findOrCreateUser(googleUser)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Database error"})
+		return c.JSON(http.StatusInternalServerError, echo.Map{
+			"message": "Database error",
+			"error":   err.Error(), // ✅ ส่งรายละเอียด error กลับมาด้วย
+		})
 	}
 
 	tokenStr, err := generateJWTToken(user.ID)
@@ -60,44 +64,46 @@ func GoogleCallback(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
 
-	frontendURL := os.Getenv("FRONTEND_URL")
-	if frontendURL == "" {
-		return c.JSON(http.StatusOK, echo.Map{"token": tokenStr, "user": user})
-	}
-	redirectURL := fmt.Sprintf("%s/auth/success?token=%s", frontendURL, tokenStr)
-	return c.Redirect(http.StatusFound, redirectURL)
+	// ✅ ไม่ redirect แล้ว → return JSON ตลอด
+	return c.JSON(http.StatusOK, echo.Map{
+		"token": tokenStr,
+		"user":  user,
+	})
 }
 
 // findOrCreateUser: หา user จาก google_id/email หรือสร้างใหม่
 func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 	var user models.User
 
+	// 1. หา user ด้วย google_id
 	err := config.GormDB.Where("google_id = ?", googleUser.ID).First(&user).Error
 	if err == nil {
+		// update ข้อมูลล่าสุดจาก Google
 		user.Email = googleUser.Email
 		user.Username = googleUser.Name
-		if err := config.GormDB.Save(&user).Error; err != nil {
-			return nil, err
+		if saveErr := config.GormDB.Save(&user).Error; saveErr != nil {
+			return nil, saveErr
 		}
 		return &user, nil
 	}
-	if err.Error() != "record not found" {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 
+	// 2. หา user ด้วย email
 	err = config.GormDB.Where("email = ?", googleUser.Email).First(&user).Error
 	if err == nil {
 		user.GoogleID = &googleUser.ID
-		if err := config.GormDB.Save(&user).Error; err != nil {
-			return nil, err
+		if saveErr := config.GormDB.Save(&user).Error; saveErr != nil {
+			return nil, saveErr
 		}
 		return &user, nil
 	}
-	if err.Error() != "record not found" {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 
-	// removed unused variable 'now'
+	// 3. ถ้าไม่เจอ → สร้างใหม่
 	user = models.User{
 		Username: googleUser.Name,
 		Email:    googleUser.Email,
