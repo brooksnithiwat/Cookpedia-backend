@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"go-auth/config"
@@ -14,10 +15,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	"gorm.io/gorm"
 )
 
-// GoogleLogin: เริ่ม OAuth flow และคืน URL ให้ frontend
+// -----------------------------
+// GoogleLogin
+// -----------------------------
 func GoogleLogin(c echo.Context) error {
 	state := generateRandomState()
 	url := config.GoogleOAuthConfig.AuthCodeURL(state)
@@ -27,7 +29,9 @@ func GoogleLogin(c echo.Context) error {
 	})
 }
 
-// GoogleCallback: รับ callback จาก Google, ดึง user info, login/signup, ออก token
+// -----------------------------
+// GoogleCallback
+// -----------------------------
 func GoogleCallback(c echo.Context) error {
 	code := c.QueryParam("code")
 	if code == "" {
@@ -53,9 +57,10 @@ func GoogleCallback(c echo.Context) error {
 
 	user, err := findOrCreateUser(googleUser)
 	if err != nil {
+		c.Logger().Error(err) // log ฝั่ง server
 		return c.JSON(http.StatusInternalServerError, echo.Map{
 			"message": "Database error",
-			"error":   err.Error(), // ✅ ส่งรายละเอียด error กลับมาด้วย
+			"error":   err.Error(),
 		})
 	}
 
@@ -64,71 +69,94 @@ func GoogleCallback(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
 
-	// ✅ ไม่ redirect แล้ว → return JSON ตลอด
+	// ✅ return JSON เสมอ
 	return c.JSON(http.StatusOK, echo.Map{
 		"token": tokenStr,
 		"user":  user,
 	})
 }
 
-// findOrCreateUser: หา user จาก google_id/email หรือสร้างใหม่
 func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 	var user models.User
 
 	// 1. หา user ด้วย google_id
-	err := config.GormDB.Where("google_id = ?", googleUser.ID).First(&user).Error
+	row := config.SQLDB.QueryRow(
+		"SELECT user_id, username, email, google_id, provider, role FROM users WHERE google_id=$1",
+		googleUser.ID,
+	)
+	err := row.Scan(&user.ID, &user.Username, &user.Email, &user.GoogleID, &user.Provider, &user.Role)
 	if err == nil {
-		// update ข้อมูลล่าสุดจาก Google
-		user.Email = googleUser.Email
-		user.Username = googleUser.Name
-		if saveErr := config.GormDB.Save(&user).Error; saveErr != nil {
-			return nil, saveErr
+		_, err = config.SQLDB.Exec(
+			"UPDATE users SET username=$1, email=$2 WHERE user_id=$3",
+			googleUser.Name, googleUser.Email, user.ID,
+		)
+		if err != nil {
+			return nil, err
 		}
 		return &user, nil
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
 	// 2. หา user ด้วย email
-	err = config.GormDB.Where("email = ?", googleUser.Email).First(&user).Error
+	row = config.SQLDB.QueryRow(
+		"SELECT user_id, username, email, google_id, provider, role FROM users WHERE email=$1",
+		googleUser.Email,
+	)
+	err = row.Scan(&user.ID, &user.Username, &user.Email, &user.GoogleID, &user.Provider, &user.Role)
 	if err == nil {
-		user.GoogleID = &googleUser.ID
-		if saveErr := config.GormDB.Save(&user).Error; saveErr != nil {
-			return nil, saveErr
+		_, err = config.SQLDB.Exec(
+			"UPDATE users SET google_id=$1 WHERE user_id=$2",
+			googleUser.ID, user.ID,
+		)
+		if err != nil {
+			return nil, err
 		}
 		return &user, nil
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
-	// 3. ถ้าไม่เจอ → สร้างใหม่
+	// 3. สร้าง user ใหม่
+	var newID int
+	err = config.SQLDB.QueryRow(
+		"INSERT INTO users(username,email,google_id,provider,role) VALUES($1,$2,$3,$4,$5) RETURNING user_id",
+		googleUser.Name, googleUser.Email, googleUser.ID, "google", "user",
+	).Scan(&newID)
+	if err != nil {
+		return nil, err
+	}
+
 	user = models.User{
+		ID:       newID,
 		Username: googleUser.Name,
 		Email:    googleUser.Email,
 		GoogleID: &googleUser.ID,
 		Provider: "google",
 		Role:     "user",
 	}
-	if err := config.GormDB.Create(&user).Error; err != nil {
-		return nil, err
-	}
+
 	return &user, nil
 }
 
-// generateJWTToken: สร้าง JWT token สำหรับ user
+// -----------------------------
+// JWT
+// -----------------------------
 func generateJWTToken(userID int) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
-		"exp":     time.Now().Add(time.Hour * 72).Unix(),
+		"exp":     time.Now().Add(72 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	secret := os.Getenv("JWT_SECRET")
 	return token.SignedString([]byte(secret))
 }
 
-// generateRandomState: สุ่ม state สำหรับ OAuth
+// -----------------------------
+// Random state for OAuth
+// -----------------------------
 func generateRandomState() string {
 	b := make([]byte, 32)
 	rand.Read(b)

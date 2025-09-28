@@ -23,9 +23,9 @@ func InitSQLDB() {
 		log.Fatal("Database environment variables are not set")
 	}
 
-	// ปิด prepared statement cache
+	// ❌ ลบ statement_cache_mode เพราะ lib/pq ไม่รองรับ
 	dsn := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable statement_cache_mode=none",
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		dbHost, dbUser, dbPassword, dbName, dbPort,
 	)
 
@@ -34,15 +34,15 @@ func InitSQLDB() {
 		log.Fatal("Failed to connect to DB (sql):", err)
 	}
 
-	// ตรวจสอบว่า DB ใช้งานได้
+	// ตั้งค่า connection pool
+	db.SetMaxIdleConns(10)
+	db.SetMaxOpenConns(100)
+	db.SetConnMaxLifetime(1 * time.Hour)
+
+	// Ping DB
 	if err := db.Ping(); err != nil {
 		log.Fatal("Failed to ping DB (sql):", err)
 	}
-
-	// ตั้งค่า connection pool
-	db.SetMaxIdleConns(10)               // จำนวน connection idle สูงสุด
-	db.SetMaxOpenConns(100)              // จำนวน connection เปิดสูงสุด
-	db.SetConnMaxLifetime(1 * time.Hour) // connection แต่ละตัวมีอายุไม่เกิน 1 ชั่วโมง
 
 	SQLDB = db
 	log.Println("Connected to PostgreSQL (database/sql) with connection pool")
