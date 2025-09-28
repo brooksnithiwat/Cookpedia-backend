@@ -76,8 +76,6 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 	if err == nil {
 		user.Email = googleUser.Email
 		user.Username = googleUser.Name
-		user.ProfilePicture = googleUser.Picture
-		user.UpdatedAt = time.Now()
 		if err := config.GormDB.Save(&user).Error; err != nil {
 			return nil, err
 		}
@@ -90,8 +88,6 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 	err = config.GormDB.Where("email = ?", googleUser.Email).First(&user).Error
 	if err == nil {
 		user.GoogleID = &googleUser.ID
-		user.ProfilePicture = googleUser.Picture
-		user.UpdatedAt = time.Now()
 		if err := config.GormDB.Save(&user).Error; err != nil {
 			return nil, err
 		}
@@ -101,15 +97,12 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 		return nil, err
 	}
 
-	now := time.Now()
+	// removed unused variable 'now'
 	user = models.User{
-		Username:       googleUser.Name,
-		Email:          googleUser.Email,
-		GoogleID:       &googleUser.ID,
-		ProfilePicture: googleUser.Picture,
-		Provider:       "google",
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		Username: googleUser.Name,
+		Email:    googleUser.Email,
+		GoogleID: &googleUser.ID,
+		Provider: "google",
 	}
 	if err := config.GormDB.Create(&user).Error; err != nil {
 		return nil, err

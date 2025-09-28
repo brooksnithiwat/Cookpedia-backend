@@ -8,7 +8,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-func Init(e *echo.Echo) {
+func Init(e *echo.Echo, authController *controllers.AuthController) {
 	// CORS middleware for frontend integration
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"}, // In production, specify your frontend domain
@@ -17,8 +17,8 @@ func Init(e *echo.Echo) {
 	}))
 
 	// Traditional auth routes
-	e.POST("/register", controllers.Register)
-	e.POST("/login", controllers.Login)
+	e.POST("/register", authController.Register)
+	e.POST("/login", authController.Login)
 
 	// Google OAuth routes
 	e.GET("/auth/google", controllers.GoogleLogin)
@@ -37,5 +37,13 @@ func Init(e *echo.Echo) {
 	})
 
 	// Get current user info
-	api.GET("/me", controllers.GetCurrentUser)
+	// api.GET("/me", controllers.GetCurrentUser)
+	// api.GET("/userprofile", controllers.GetUserProfile)
+	api.GET("/user/userprofile", authController.GetUserProfile)   //หน้า show user profile
+	api.POST("/user/userprofile", authController.EditUserProfile) //หน้า edit user profile
+
+	// api.POST("user/createpost", authController.CreatePost)
+	// api.POST("/user/editpost", authController.EditPost)
+	// api.POST("/user/deletepost", authController.DeletePost)
+	// api.POST("/user/ratepost", authController.RatePost)
 }

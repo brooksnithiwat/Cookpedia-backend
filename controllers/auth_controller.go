@@ -1,25 +1,27 @@
 package controllers
 
 import (
-	"fmt"
 	"net/http"
 
-	"go-auth/config"
 	"go-auth/models"
 	"go-auth/services"
 
 	"github.com/labstack/echo/v4"
 )
 
-var authService = services.NewAuthService()
+// POST /api/userprofile (multipart/form-data: image)
 
-func Register(c echo.Context) error {
+type AuthController struct {
+	AuthService *services.AuthService
+}
+
+func (ac *AuthController) Register(c echo.Context) error {
 	user := new(models.User)
 	if err := c.Bind(user); err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid request body"})
 	}
 
-	err := authService.Register(user)
+	err := ac.AuthService.Register(user)
 	if err == services.ErrMissingFields {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": err.Error()})
 	} else if err == services.ErrUserExists {
@@ -31,13 +33,13 @@ func Register(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"message": "User registered successfully"})
 }
 
-func Login(c echo.Context) error {
+func (ac *AuthController) Login(c echo.Context) error {
 	user := new(models.User)
 	if err := c.Bind(user); err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid request body"})
 	}
 
-	dbUser, token, err := authService.Login(user.Username, user.Password)
+	dbUser, token, err := ac.AuthService.Login(user.Username, user.Password)
 	if err == services.ErrInvalidCredentials {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"message": err.Error()})
 	} else if err != nil {
@@ -46,37 +48,8 @@ func Login(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{
 		"token": token,
-		"user":  dbUser,
+		"Role":  dbUser,
 	})
 }
 
-// Add this function to controllers/auth_controller.go
 
-func GetCurrentUser(c echo.Context) error {
-	userID := c.Get("user_id")
-	if userID == nil {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
-	}
-
-	var user models.User
-	var userIDInt int
-	switch v := userID.(type) {
-	case int:
-		userIDInt = v
-	case float64:
-		userIDInt = int(v)
-	case string:
-		fmt.Sscanf(v, "%d", &userIDInt)
-	default:
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid user_id type"})
-	}
-	err := config.GormDB.First(&user, "user_id = ?", userIDInt).Error
-	if err != nil {
-		if err.Error() == "record not found" {
-			return c.JSON(http.StatusNotFound, echo.Map{"message": "User not found"})
-		}
-		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Database error"})
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"user": user})
-}
