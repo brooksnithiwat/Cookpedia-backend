@@ -38,7 +38,7 @@ type User struct {
 }
 
 type GoogleUserInfo struct {
-	ID    string `json:"id" form:"id"`
-	Email string `json:"email" form:"email"`
-	Name  string `json:"name" form:"name"`
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
 }

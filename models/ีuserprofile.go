@@ -1,6 +1,7 @@
 package models
 
 type UserProfile struct {
+	UserID    int64  `json:"user_id" form:"user_id"`
 	Firstname string `json:"firstname" form:"firstname"`
 	Lastname  string `json:"lastname" form:"lastname"`
 	Email     string `json:"email" form:"email"`
