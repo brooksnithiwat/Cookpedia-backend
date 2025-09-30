@@ -22,7 +22,7 @@ func InitSQLDB() {
 		log.Fatal("Database environment variables are not set")
 	}
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable", dbHost, dbUser, dbPassword, dbName, dbPort)
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=require", dbHost, dbUser, dbPassword, dbName, dbPort)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatal("Failed to connect to DB (sql):", err)
