@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -148,13 +149,17 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 }
 
 func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
-	// รับ user_id จาก form-data
-	userIDStr := c.FormValue("user_id")
-	if userIDStr == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "user_id is required"})
+	// 1) ตรวจสอบ user_id จาก token
+	uid := c.Get("user_id")
+	if uid == nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{
+			"message": "User not authenticated",
+		})
 	}
 
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	// แปลง user_id ให้เป็น string ก่อนแล้วค่อย parse เป็น int64
+	uidStr := fmt.Sprintf("%v", uid)
+	userID, err := strconv.ParseInt(uidStr, 10, 64)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid user_id"})
 	}
@@ -165,9 +170,13 @@ func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
 	phone := c.FormValue("phone")
 	email := c.FormValue("email")
 	aboutme := c.FormValue("aboutme")
+
 	file, err := c.FormFile("image")
 	if err != nil && err != http.ErrMissingFile {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to read image", "error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{
+			"message": "Failed to read image",
+			"error":   err.Error(),
+		})
 	}
 
 	var imageURL string
@@ -177,15 +186,20 @@ func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to open image"})
 		}
 		defer src.Close()
+
 		imageURL, err = supabaseutil.UploadFile(src, file, userID, "ProfileImage/profile")
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to upload image", "error": err.Error()})
+			return c.JSON(http.StatusInternalServerError, echo.Map{
+				"message": "Failed to upload image",
+				"error":   err.Error(),
+			})
 		}
 	}
 
 	// เตรียม field และ values สำหรับ update
 	fields := []string{}
 	values := []interface{}{}
+
 	if firstname != "" {
 		fields = append(fields, "firstname")
 		values = append(values, firstname)
@@ -219,9 +233,10 @@ func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
 	whereCon := fmt.Sprintf("user_id = $%d", len(fields)+1)
 	values = append(values, userID)
 
+	// อัปเดตข้อมูล
 	rowsAffected, err := ac.AuthService.DBService.UpdateData("users", fields, whereCon, values)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to update user profile"})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to update user profile", "error": err.Error()})
 	}
 
 	if rowsAffected == 0 {
@@ -250,7 +265,7 @@ func (ac *AuthController) GetUserProfileByID(c echo.Context) error {
 	}
 
 	// ฟิลด์ที่อยาก select
-	fields := []string{"firstname", "lastname", "email", "phone", "aboutme", "image_url"}
+	fields := []string{"user_id", "firstname", "lastname", "email", "phone", "aboutme", "image_url"}
 	whereCon := "user_id = ?"
 	whereArgs := []interface{}{userID}
 
@@ -268,6 +283,7 @@ func (ac *AuthController) GetUserProfileByID(c echo.Context) error {
 
 	row := results[0]
 	profile := models.UserProfile{
+		UserID:    row["user_id"].(int64),
 		Firstname: row["firstname"].(string),
 		Lastname:  row["lastname"].(string),
 		Email:     row["email"].(string),
