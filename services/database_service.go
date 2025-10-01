@@ -253,3 +253,129 @@ func (s *DatabaseService) DeleteData(table string, condition string, conditionVa
 
 	return rowsAffected, nil
 }
+
+func (s *DatabaseService) SelectJoin(
+	baseTable string,
+	fields []string, // fields ที่จะ select เช่น ["p.post_id","p.menu_name","c.category_tag_name"]
+	joins []string, // join clauses เช่น ["JOIN post_categories pc ON p.post_id=pc.post_id","JOIN categories_tag c ON pc.category_tag_id=c.category_tag_id"]
+	condition string, // WHERE condition เช่น "p.user_id=$1"
+	conditionValues []interface{}, // values สำหรับ WHERE condition
+	orderBy string, // ORDER BY clause (optional)
+	limit int, // LIMIT (0=ไม่จำกัด)
+	offset int, // OFFSET (0=ไม่จำกัด)
+) (*sql.Rows, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	selectClause := "*"
+	if len(fields) > 0 {
+		selectClause = strings.Join(fields, ", ")
+	}
+
+	query := fmt.Sprintf("SELECT %s FROM %s", selectClause, baseTable)
+
+	if len(joins) > 0 {
+		query += " " + strings.Join(joins, " ")
+	}
+
+	if condition != "" {
+		query += " WHERE " + condition
+	}
+
+	if orderBy != "" {
+		query += " ORDER BY " + orderBy
+	}
+
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	if offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", offset)
+	}
+
+	fmt.Println("Executing query:", query)
+	fmt.Println("With values:", conditionValues)
+
+	rows, err := s.DB.QueryContext(ctx, query, conditionValues...)
+	if err != nil {
+		fmt.Println("[DEBUG] SelectJoin error:", err)
+		return nil, err
+	}
+
+	return rows, nil
+}
+
+func (s *DatabaseService) GetPostWithTagsAndDetails(postID int) (map[string]interface{}, error) {
+	post := make(map[string]interface{})
+
+	// 1) ดึง post
+	row := s.DB.QueryRow("SELECT post_id, user_id, menu_name, story, image_url FROM posts WHERE post_id = $1", postID)
+	var userID int
+	var menuName, story, imageURL sql.NullString
+	err := row.Scan(&postID, &userID, &menuName, &story, &imageURL)
+	if err != nil {
+		return nil, err
+	}
+
+	post["post_id"] = postID
+	post["menu_name"] = menuName.String
+	post["story"] = story.String
+	post["image_url"] = imageURL.String
+
+	// 2) ดึง categories_tags
+	cats := []string{}
+	rows, _ := s.DB.Query(`
+		SELECT ct.category_tag_name
+		FROM post_categories pc
+		JOIN categories_tag ct ON pc.category_tag_id = ct.category_tag_id
+		WHERE pc.post_id = $1
+	`, postID)
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		rows.Scan(&name)
+		cats = append(cats, name)
+	}
+	post["categories_tags"] = cats
+
+	// 3) ดึง ingredients_tags
+	ingTags := []string{}
+	rows2, _ := s.DB.Query(`
+		SELECT it.ingredient_tag_name
+		FROM post_ingredients pi
+		JOIN ingredients_tag it ON pi.ingredient_tag_id = it.ingredient_tag_id
+		WHERE pi.post_id = $1
+	`, postID)
+	defer rows2.Close()
+	for rows2.Next() {
+		var name string
+		rows2.Scan(&name)
+		ingTags = append(ingTags, name)
+	}
+	post["ingredients_tags"] = ingTags
+
+	// 4) ดึง ingredients_detail
+	ings := []string{}
+	rows3, _ := s.DB.Query("SELECT detail FROM ingredients_detail WHERE post_id = $1", postID)
+	defer rows3.Close()
+	for rows3.Next() {
+		var detail string
+		rows3.Scan(&detail)
+		ings = append(ings, detail)
+	}
+	post["ingredients"] = ings
+
+	// 5) ดึง instructions
+	ins := []string{}
+	rows4, _ := s.DB.Query("SELECT detail FROM instructions WHERE post_id = $1 ORDER BY step_number ASC", postID)
+	defer rows4.Close()
+	for rows4.Next() {
+		var step string
+		rows4.Scan(&step)
+		ins = append(ins, step)
+	}
+	post["instructions"] = ins
+
+	return post, nil
+}

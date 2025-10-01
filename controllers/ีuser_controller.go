@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"fmt"
 	"go-auth/models"
 	"go-auth/supabaseutil"
@@ -12,140 +13,141 @@ import (
 )
 
 func (ac *AuthController) CreatePost(c echo.Context) error {
-	// 1) ตรวจสอบ user_id จาก token
 	userID := c.Get("user_id")
 	if userID == nil {
-		return c.JSON(http.StatusUnauthorized, echo.Map{
-			"message": "User not authenticated",
-		})
+		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
 	}
 
-	// 2) อ่านค่า form
+	uidStr := fmt.Sprintf("%v", userID)
+	userIDInt, err := strconv.ParseInt(uidStr, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Invalid user_id"})
+	}
+
+	// อ่านค่า form
 	menuName := c.FormValue("menu_name")
-	story := c.FormValue("story")
-	categoriesStr := c.FormValue("categories")     // ตัวอย่าง: "One-dish|Dessert"
-	ingredientsStr := c.FormValue("ingredients")   // ตัวอย่าง: "egg|rice|pork"
-	instructionsStr := c.FormValue("instructions") // ตัวอย่าง: "step1|step2|step3"
+	story := c.FormValue("Details")
+	categoriesStr := c.FormValue("categories_tags")       // [1,3]
+	ingredientsTagsStr := c.FormValue("ingredients_tags") // [2,5,7]
+	ingredientsStr := c.FormValue("ingredients")          // ["Pork","Cooked Rice"]
+	instructionsStr := c.FormValue("instructions")        // ["Step1","Step2"]
 
 	if menuName == "" {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "menu_name is required"})
 	}
 
-	// split string เป็น slice
-	var categories, ingredients, instructions []string
-	if categoriesStr != "" {
-		categories = splitAndTrim(categoriesStr, "|")
-	}
-	if ingredientsStr != "" {
-		ingredients = splitAndTrim(ingredientsStr, "|")
-	}
-	if instructionsStr != "" {
-		instructions = splitAndTrim(instructionsStr, "|")
+	// แปลง JSON เป็น slice
+	var categoryIDs, ingredientTagIDs []int
+	err = json.Unmarshal([]byte(categoriesStr), &categoryIDs)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid categories_tags format"})
 	}
 
-	// 3) อัปโหลดไฟล์ถ้ามี
+	err = json.Unmarshal([]byte(ingredientsTagsStr), &ingredientTagIDs)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid ingredients_tags format"})
+	}
+
+	var ingredients, instructions []string
+	err = json.Unmarshal([]byte(ingredientsStr), &ingredients)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid ingredients format"})
+	}
+
+	err = json.Unmarshal([]byte(instructionsStr), &instructions)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid instructions format"})
+	}
+
+	// อัปโหลดไฟล์ถ้ามี
 	var imageURL string
-	file, err := c.FormFile("image")
+	file, _ := c.FormFile("image")
 	if file != nil {
 		src, err := file.Open()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to open image"})
 		}
 		defer src.Close()
-
-		imageURL, err = supabaseutil.UploadFile(src, file, userID, "PostImage/post")
+		imageURL, err = supabaseutil.UploadFile(src, file, userIDInt, "PostImage/post")
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, echo.Map{
-				"message": "Failed to upload image", "error": err.Error(),
-			})
+			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to upload image", "error": err.Error()})
 		}
 	}
 
-	// 4) lookup category_tag_id จากชื่อ (ใช้ตัวแรกเป็นหลัก)
-	var categoryTagID int
-	if len(categories) > 0 {
-		err := ac.AuthService.DBService.DB.QueryRow("SELECT category_tag_id FROM categories_tag WHERE category_tag_name = $1", categories[0]).Scan(&categoryTagID)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid category name: " + categories[0]})
-		}
-	}
-
-	// 5) insert post ลง DB ด้วย InsertData
-	postData := map[string]interface{}{
-		"user_id":   userID,
-		"menu_name": menuName,
-		"story":     story,
-		"image_url": imageURL,
-	}
-	_, err = ac.AuthService.DBService.InsertData("posts", postData)
+	// เริ่ม transaction
+	tx, err := ac.AuthService.DBService.DB.Begin()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{
-			"message": "Failed to create post", "error": err.Error(),
-		})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to begin transaction", "error": err.Error()})
 	}
+	defer tx.Rollback()
 
-	// ดึง post_id ล่าสุด (อาจต้องแก้ให้เหมาะกับ production)
+	// insert post
 	var postID int
-	err = ac.AuthService.DBService.DB.QueryRow("SELECT currval(pg_get_serial_sequence('posts','post_id'))").Scan(&postID)
+	err = tx.QueryRow(
+		"INSERT INTO posts (user_id, menu_name, story, image_url) VALUES ($1,$2,$3,$4) RETURNING post_id",
+		userIDInt, menuName, story, imageURL,
+	).Scan(&postID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to get post_id", "error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to insert post", "error": err.Error()})
 	}
 
-	// 6) insert post_categories (รองรับหลาย category)
-	for _, cat := range categories {
-		var catID int
-		err := ac.AuthService.DBService.DB.QueryRow("SELECT category_tag_id FROM categories_tag WHERE category_tag_name = $1", cat).Scan(&catID)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid category name: " + cat})
-		}
-		_, err = ac.AuthService.DBService.InsertData("post_categories", map[string]interface{}{
-			"post_id":         postID,
-			"category_tag_id": catID,
-		})
+	// insert post_categories
+	for _, catID := range categoryIDs {
+		_, err := tx.Exec("INSERT INTO post_categories (post_id, category_tag_id) VALUES ($1,$2)", postID, catID)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to insert post_categories", "error": err.Error()})
 		}
 	}
 
-	// 6) insert ingredients
+	// insert post_ingredients (tags)
+	for _, ingTagID := range ingredientTagIDs {
+		_, err := tx.Exec("INSERT INTO post_ingredients (post_id, ingredient_tag_id) VALUES ($1,$2)", postID, ingTagID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to insert post_ingredients", "error": err.Error()})
+		}
+	}
+
+	// insert ingredients_detail
 	for _, ing := range ingredients {
-		ingData := map[string]interface{}{
-			"post_id": postID,
-			"detail":  ing,
-		}
-		_, err := ac.AuthService.DBService.InsertData("ingredients_detail", ingData)
+		_, err := tx.Exec("INSERT INTO ingredients_detail (post_id, detail) VALUES ($1,$2)", postID, ing)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, echo.Map{
-				"message": "Failed to insert ingredient", "error": err.Error(),
-			})
+			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to insert ingredients_detail", "error": err.Error()})
 		}
 	}
 
-	// 7) insert instructions (มี step_number)
+	// insert instructions
 	for i, step := range instructions {
-		insData := map[string]interface{}{
-			"post_id":     postID,
-			"step_number": i + 1,
-			"detail":      step,
-		}
-		_, err := ac.AuthService.DBService.InsertData("instructions", insData)
+		_, err := tx.Exec("INSERT INTO instructions (post_id, step_number, detail) VALUES ($1,$2,$3)", postID, i+1, step)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, echo.Map{
-				"message": "Failed to insert instruction", "error": err.Error(),
-			})
+			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to insert instructions", "error": err.Error()})
 		}
 	}
 
-	// 8) return response
+	// commit transaction
+	err = tx.Commit()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to commit transaction", "error": err.Error()})
+	}
+
+	// ดึงข้อมูลครบพร้อม join
+	postData, _ := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
+
+	resp := models.PostResponse{
+		PostID:          postData["post_id"].(int),
+		MenuName:        postData["menu_name"].(string),
+		Story:           postData["story"].(string),
+		ImageURL:        postData["image_url"].(string),
+		CategoriesTags:  postData["categories_tags"].([]string),
+		IngredientsTags: postData["ingredients_tags"].([]string),
+		Ingredients:     postData["ingredients"].([]string),
+		Instructions:    postData["instructions"].([]string),
+	}
+
 	return c.JSON(http.StatusCreated, echo.Map{
-		"message":      "Post created successfully",
-		"post_id":      postID,
-		"menu_name":    menuName,
-		"story":        story,
-		"image_url":    imageURL,
-		"ingredients":  ingredients,
-		"instructions": instructions,
+		"message": "Post created successfully",
+		"post":    resp,
 	})
+
 }
 
 func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
@@ -157,20 +159,45 @@ func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
 		})
 	}
 
-	// แปลง user_id ให้เป็น string ก่อนแล้วค่อย parse เป็น int64
+	// แปลง user_id
 	uidStr := fmt.Sprintf("%v", uid)
 	userID, err := strconv.ParseInt(uidStr, 10, 64)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid user_id"})
 	}
 
-	// รับค่า form-data อื่น ๆ
-	firstname := c.FormValue("firstname")
-	lastname := c.FormValue("lastname")
-	phone := c.FormValue("phone")
-	email := c.FormValue("email")
-	aboutme := c.FormValue("aboutme")
+	// ดึง form params ทั้งหมด
+	formParams, err := c.FormParams()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid form data"})
+	}
 
+	// รับค่าจาก form (แต่ต้องเช็คว่า key ถูกส่งมามั้ย)
+	fields := []string{}
+	values := []interface{}{}
+
+	if _, ok := formParams["firstname"]; ok {
+		fields = append(fields, "firstname")
+		values = append(values, c.FormValue("firstname")) // จะได้ทั้ง "" หรือค่าอื่น ๆ
+	}
+	if _, ok := formParams["lastname"]; ok {
+		fields = append(fields, "lastname")
+		values = append(values, c.FormValue("lastname"))
+	}
+	if _, ok := formParams["email"]; ok {
+		fields = append(fields, "email")
+		values = append(values, c.FormValue("email"))
+	}
+	if _, ok := formParams["phone"]; ok {
+		fields = append(fields, "phone")
+		values = append(values, c.FormValue("phone"))
+	}
+	if _, ok := formParams["aboutme"]; ok {
+		fields = append(fields, "aboutme")
+		values = append(values, c.FormValue("aboutme"))
+	}
+
+	// จัดการไฟล์รูป
 	file, err := c.FormFile("image")
 	if err != nil && err != http.ErrMissingFile {
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -179,7 +206,6 @@ func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
 		})
 	}
 
-	var imageURL string
 	if file != nil {
 		src, err := file.Open()
 		if err != nil {
@@ -187,44 +213,19 @@ func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
 		}
 		defer src.Close()
 
-		imageURL, err = supabaseutil.UploadFile(src, file, userID, "ProfileImage/profile")
+		imageURL, err := supabaseutil.UploadFile(src, file, userID, "ProfileImage/profile")
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, echo.Map{
 				"message": "Failed to upload image",
 				"error":   err.Error(),
 			})
 		}
-	}
 
-	// เตรียม field และ values สำหรับ update
-	fields := []string{}
-	values := []interface{}{}
-
-	if firstname != "" {
-		fields = append(fields, "firstname")
-		values = append(values, firstname)
-	}
-	if lastname != "" {
-		fields = append(fields, "lastname")
-		values = append(values, lastname)
-	}
-	if email != "" {
-		fields = append(fields, "email")
-		values = append(values, email)
-	}
-	if phone != "" {
-		fields = append(fields, "phone")
-		values = append(values, phone)
-	}
-	if aboutme != "" {
-		fields = append(fields, "aboutme")
-		values = append(values, aboutme)
-	}
-	if imageURL != "" {
 		fields = append(fields, "image_url")
 		values = append(values, imageURL)
 	}
 
+	// ถ้าไม่มีอะไรส่งมาเลย
 	if len(fields) == 0 {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "No data to update"})
 	}
@@ -233,10 +234,12 @@ func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
 	whereCon := fmt.Sprintf("user_id = $%d", len(fields)+1)
 	values = append(values, userID)
 
-	// อัปเดตข้อมูล
+	// update
 	rowsAffected, err := ac.AuthService.DBService.UpdateData("users", fields, whereCon, values)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to update user profile", "error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{
+			"message": "Failed to update user profile", "error": err.Error(),
+		})
 	}
 
 	if rowsAffected == 0 {
