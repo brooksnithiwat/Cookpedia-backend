@@ -1,18 +1,16 @@
-
-
 package services
 
 import (
-	"go-auth/config"
 	"errors"
+	"go-auth/config"
 	"go-auth/models"
 	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-
 )
+
 // UpdateUserImage อัปเดต image_url ของ user
 func (s *AuthService) UpdateUserImage(userID interface{}, imageURL string) error {
 	return config.GormDB.Model(&models.User{}).Where("user_id = ?", userID).Update("image_url", imageURL).Error
@@ -27,6 +25,7 @@ type AuthService struct {
 func NewAuthService(dbService DatabaseService) *AuthService {
 	return &AuthService{DBService: dbService}
 }
+
 // GetUserProfile ดึงข้อมูล user ตาม user_id
 func (s *AuthService) GetUserProfile(userID interface{}) (*models.User, error) {
 	var user models.User
@@ -36,6 +35,7 @@ func (s *AuthService) GetUserProfile(userID interface{}) (*models.User, error) {
 	}
 	return &user, nil
 }
+
 // Register ทำการสมัครสมาชิกใหม่
 // รับ struct User และคืน error ถ้ามีปัญหา เช่น ข้อมูลไม่ครบหรือ user ซ้ำ
 func (s *AuthService) Register(user *models.User) error {
@@ -106,7 +106,7 @@ func (s *AuthService) Login(usernameOrEmail, password string) (string, string, e
 
 // Custom error สำหรับ service เพื่อให้ controller ตรวจสอบและตอบกลับได้ง่าย
 var (
-   ErrMissingFields      = errors.New("username, email, and password are required")
-   ErrUserExists         = errors.New("user already exists")
-   ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrMissingFields      = errors.New("username, email, and password are required")
+	ErrUserExists         = errors.New("user already exists")
+	ErrInvalidCredentials = errors.New("invalid credentials")
 )
