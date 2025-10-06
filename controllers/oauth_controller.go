@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	// "fmt"
 	"go-auth/config"
 	"go-auth/models"
 	"net/http"
@@ -65,32 +65,25 @@ func GoogleCallback(c echo.Context) error {
 		})
 	}
 
-	tokenStr, err := generateJWTToken(user.ID, user.Role)
+	tokenStr, err := generateJWTToken(user.ID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
 
-	frontendURL := os.Getenv("FRONTEND_URL")
-	if frontendURL != "" {
-		// ✅ redirect ไปหน้า frontend ถ้ามี
-		redirectURL := fmt.Sprintf("%s/auth/success?token=%s", frontendURL, tokenStr)
-		return c.Redirect(http.StatusFound, redirectURL)
-	}
-
-	// ✅ ถ้าไม่มี frontend URL → return JSON
+	// ✅ return JSON เหมือน login ปกติ
 	return c.JSON(http.StatusOK, echo.Map{
 		"token": tokenStr,
 		"user":  user,
 	})
 }
 
+
 // -----------------------------
 // JWT
 // -----------------------------
-func generateJWTToken(userID int, role string) (string, error) {
+func generateJWTToken(userID int) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
-		"role":    role,
 		"exp":     time.Now().Add(72 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
