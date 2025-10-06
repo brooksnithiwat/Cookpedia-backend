@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	// "fmt"
+	"fmt"
 	"go-auth/config"
 	"go-auth/models"
 	"net/http"
@@ -71,12 +71,59 @@ func GoogleCallback(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
 
-	// ✅ return JSON แบบที่คุณต้องการ
-	return c.JSON(http.StatusOK, echo.Map{
-		"token": tokenStr,
-		"Role":  dbUser.Role,
-	})
+	// ✅ redirect ไป frontend พร้อมส่ง token และ Role
+	frontendURL := os.Getenv("FRONTEND_URL")
+	// if frontendURL == "" {
+	// 	frontendURL = "http://localhost:3000" // fallback
+	// }
+
+	redirectURL := fmt.Sprintf("%s/auth/success?token=%s&Role=%s", frontendURL, tokenStr, dbUser.Role)
+	return c.Redirect(http.StatusFound, redirectURL)
 }
+
+// func GoogleCallback(c echo.Context) error {
+// 	code := c.QueryParam("code")
+// 	if code == "" {
+// 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Authorization code not provided"})
+// 	}
+
+// 	token, err := config.GoogleOAuthConfig.Exchange(c.Request().Context(), code)
+// 	if err != nil {
+// 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Failed to exchange code for token"})
+// 	}
+
+// 	client := config.GoogleOAuthConfig.Client(c.Request().Context(), token)
+// 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
+// 	if err != nil {
+// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to get user info"})
+// 	}
+// 	defer resp.Body.Close()
+
+// 	var googleUser models.GoogleUserInfo
+// 	if err := json.NewDecoder(resp.Body).Decode(&googleUser); err != nil {
+// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to decode user info"})
+// 	}
+
+// 	dbUser, err := findOrCreateUser(googleUser)
+// 	if err != nil {
+// 		c.Logger().Error(err)
+// 		return c.JSON(http.StatusInternalServerError, echo.Map{
+// 			"message": "Database error",
+// 			"error":   err.Error(),
+// 		})
+// 	}
+
+// 	tokenStr, err := generateJWTToken(dbUser.ID)
+// 	if err != nil {
+// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
+// 	}
+
+// 	// ✅ return JSON แบบที่คุณต้องการ
+// 	return c.JSON(http.StatusOK, echo.Map{
+// 		"token": tokenStr,
+// 		"Role":  dbUser.Role,
+// 	})
+// }
 
 // -----------------------------
 // JWT
