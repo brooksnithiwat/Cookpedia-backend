@@ -38,7 +38,7 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 
 	// Get current user info
 	// api.GET("/me", controllers.GetCurrentUser)
-	// api.GET("/userprofile", controllers.GetUserProfile)
+	//api.GET("/userprofile", controllers.GetUserProfile)
 	api.GET("/getalluser", authController.GetAllUser)                //หน้า show user profile (ของเรา)
 	api.GET("/userprofile", authController.GetUserProfile)           //หน้า show user profile (ของเรา)
 	api.GET("/userprofile/:id", authController.GetUserProfileByID)   //หน้า show user profile (ของเรา)

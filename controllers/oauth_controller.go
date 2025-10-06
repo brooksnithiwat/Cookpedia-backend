@@ -65,7 +65,7 @@ func GoogleCallback(c echo.Context) error {
 		})
 	}
 
-	tokenStr, err := generateJWTToken(user.ID)
+	tokenStr, err := generateJWTToken(user.ID, user.Role)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
@@ -87,9 +87,10 @@ func GoogleCallback(c echo.Context) error {
 // -----------------------------
 // JWT
 // -----------------------------
-func generateJWTToken(userID int) (string, error) {
+func generateJWTToken(userID int, role string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
+		"role":    role,
 		"exp":     time.Now().Add(72 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
