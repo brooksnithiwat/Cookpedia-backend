@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+
 	// "fmt"
 	"go-auth/config"
 	"go-auth/models"
@@ -56,7 +57,7 @@ func GoogleCallback(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to decode user info"})
 	}
 
-	user, err := findOrCreateUser(googleUser)
+	dbUser, err := findOrCreateUser(googleUser)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -65,18 +66,17 @@ func GoogleCallback(c echo.Context) error {
 		})
 	}
 
-	tokenStr, err := generateJWTToken(user.ID)
+	tokenStr, err := generateJWTToken(dbUser.ID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
 
-	// ✅ return JSON เหมือน login ปกติ
+	// ✅ return JSON แบบที่คุณต้องการ
 	return c.JSON(http.StatusOK, echo.Map{
 		"token": tokenStr,
-		"user":  user,
+		"Role":  dbUser.Role,
 	})
 }
-
 
 // -----------------------------
 // JWT
