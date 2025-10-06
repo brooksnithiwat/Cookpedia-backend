@@ -30,6 +30,7 @@ func JWTMiddleware() echo.MiddlewareFunc {
 			// สามารถเก็บ claims ลง context หรือ ดึงข้อมูล user_id ก็ได้
 			if claims, ok := token.Claims.(jwt.MapClaims); ok {
 				c.Set("user_id", claims["user_id"])
+				c.Set("role", claims["role"])
 			}
 
 			return next(c)

@@ -84,71 +84,6 @@ func GoogleCallback(c echo.Context) error {
 	})
 }
 
-func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
-	var user models.User
-
-	// 1. หา user ด้วย google_id
-	row := config.SQLDB.QueryRow(
-		"SELECT user_id, username, email, google_id, provider, role FROM users WHERE google_id=$1",
-		googleUser.ID,
-	)
-	err := row.Scan(&user.ID, &user.Username, &user.Email, &user.GoogleID, &user.Provider, &user.Role)
-	if err == nil {
-		_, err = config.SQLDB.Exec(
-			"UPDATE users SET username=$1, email=$2 WHERE user_id=$3",
-			googleUser.Name, googleUser.Email, user.ID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return &user, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	// 2. หา user ด้วย email
-	row = config.SQLDB.QueryRow(
-		"SELECT user_id, username, email, google_id, provider, role FROM users WHERE email=$1",
-		googleUser.Email,
-	)
-	err = row.Scan(&user.ID, &user.Username, &user.Email, &user.GoogleID, &user.Provider, &user.Role)
-	if err == nil {
-		_, err = config.SQLDB.Exec(
-			"UPDATE users SET google_id=$1 WHERE user_id=$2",
-			googleUser.ID, user.ID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return &user, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	// 3. สร้าง user ใหม่
-	var newID int
-	err = config.SQLDB.QueryRow(
-		"INSERT INTO users(username,email,google_id,provider,role) VALUES($1,$2,$3,$4,$5) RETURNING user_id",
-		googleUser.Name, googleUser.Email, googleUser.ID, "google", "user",
-	).Scan(&newID)
-	if err != nil {
-		return nil, err
-	}
-
-	user = models.User{
-		ID:       newID,
-		Username: googleUser.Name,
-		Email:    googleUser.Email,
-		GoogleID: &googleUser.ID,
-		Provider: "google",
-		Role:     "user",
-	}
-
-	return &user, nil
-}
-
 // -----------------------------
 // JWT
 // -----------------------------
@@ -169,4 +104,170 @@ func generateRandomState() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)
+}
+
+// func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
+// 	var user models.User
+// 	var googleID, imageURL sql.NullString
+
+// 	// 1. หา user ด้วย google_id
+// 	row := config.SQLDB.QueryRow(
+// 		"SELECT user_id, username, email, google_id, image_url, provider, role FROM users WHERE google_id=$1",
+// 		googleUser.ID,
+// 	)
+// 	err := row.Scan(&user.ID, &user.Username, &user.Email, &googleID, &imageURL, &user.Provider, &user.Role)
+// 	if err == nil {
+// 		if googleID.Valid {
+// 			user.GoogleID = &googleID.String
+// 		}
+// 		if imageURL.Valid {
+// 			user.ImageURL = imageURL.String
+// 		}
+// 		// อัปเดตชื่อ, อีเมล และรูปจาก Google
+// 		_, err = config.SQLDB.Exec(
+// 			"UPDATE users SET username=$1, email=$2, google_id=$3, image_url=$4 WHERE user_id=$5",
+// 			googleUser.Name, googleUser.Email, googleUser.ID, googleUser.ImageURL, user.ID,
+// 		)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		user.GoogleID = &googleUser.ID
+// 		user.ImageURL = googleUser.ImageURL
+// 		return &user, nil
+// 	}
+// 	if !errors.Is(err, sql.ErrNoRows) {
+// 		return nil, err
+// 	}
+
+// 	// 2. หา user ด้วย email
+// 	row = config.SQLDB.QueryRow(
+// 		"SELECT user_id, username, email, google_id, image_url, provider, role FROM users WHERE email=$1",
+// 		googleUser.Email,
+// 	)
+// 	err = row.Scan(&user.ID, &user.Username, &user.Email, &googleID, &imageURL, &user.Provider, &user.Role)
+// 	if err == nil {
+// 		if googleID.Valid {
+// 			user.GoogleID = &googleID.String
+// 		}
+// 		if imageURL.Valid {
+// 			user.ImageURL = imageURL.String
+// 		}
+// 		// bind google_id + image_url ให้ user เดิม
+// 		_, err = config.SQLDB.Exec(
+// 			"UPDATE users SET google_id=$1, image_url=$2, provider=$3 WHERE user_id=$4",
+// 			googleUser.ID, googleUser.ImageURL, "google", user.ID,
+// 		)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		user.GoogleID = &googleUser.ID
+// 		user.ImageURL = googleUser.ImageURL
+// 		user.Provider = "google"
+// 		return &user, nil
+// 	}
+// 	if !errors.Is(err, sql.ErrNoRows) {
+// 		return nil, err
+// 	}
+
+// 	// 3. ถ้าไม่เจอ → สร้าง user ใหม่
+// 	var newID int
+// 	err = config.SQLDB.QueryRow(
+// 		"INSERT INTO users(username,email,google_id,image_url,provider,role) VALUES($1,$2,$3,$4,$5,$6) RETURNING user_id",
+// 		googleUser.Name, googleUser.Email, googleUser.ID, googleUser.ImageURL, "google", "user",
+// 	).Scan(&newID)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	user = models.User{
+// 		ID:       newID,
+// 		Username: googleUser.Name,
+// 		Email:    googleUser.Email,
+// 		GoogleID: &googleUser.ID,
+// 		ImageURL: googleUser.ImageURL,
+// 		Provider: "google",
+// 		Role:     "user",
+// 	}
+
+// 	return &user, nil
+// }
+
+func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
+	var user models.User
+	var googleID sql.NullString
+
+	// 1. หา user ด้วย google_id
+	row := config.SQLDB.QueryRow(
+		"SELECT user_id, username, email, google_id, image_url, provider, role FROM users WHERE google_id=$1",
+		googleUser.ID,
+	)
+	var imageURL string
+	err := row.Scan(&user.ID, &user.Username, &user.Email, &googleID, &imageURL, &user.Provider, &user.Role)
+	if err == nil {
+		if googleID.Valid {
+			user.GoogleID = &googleID.String
+		}
+		user.ImageURL = imageURL // ไม่อัปเดตรูป
+		// update ชื่อ + email เท่านั้น
+		_, err = config.SQLDB.Exec(
+			"UPDATE users SET username=$1, email=$2 WHERE user_id=$3",
+			googleUser.Name, googleUser.Email, user.ID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return &user, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	// 2. หา user ด้วย email
+	row = config.SQLDB.QueryRow(
+		"SELECT user_id, username, email, google_id, image_url, provider, role FROM users WHERE email=$1",
+		googleUser.Email,
+	)
+	err = row.Scan(&user.ID, &user.Username, &user.Email, &googleID, &imageURL, &user.Provider, &user.Role)
+	if err == nil {
+		if googleID.Valid {
+			user.GoogleID = &googleID.String
+		}
+		user.ImageURL = imageURL // ไม่อัปเดตรูป
+		// bind google_id ให้ user เดิม แต่ไม่อัปเดตรูป
+		_, err = config.SQLDB.Exec(
+			"UPDATE users SET google_id=$1, provider=$2 WHERE user_id=$3",
+			googleUser.ID, "google", user.ID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		user.GoogleID = &googleUser.ID
+		user.Provider = "google"
+		return &user, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	// 3. ถ้าไม่เจอ → สร้าง user ใหม่ พร้อม image_url
+	var newID int
+	err = config.SQLDB.QueryRow(
+		"INSERT INTO users(username,email,google_id,image_url,provider,role) VALUES($1,$2,$3,$4,$5,$6) RETURNING user_id",
+		googleUser.Name, googleUser.Email, googleUser.ID, googleUser.ImageURL, "google", "user",
+	).Scan(&newID)
+	if err != nil {
+		return nil, err
+	}
+
+	user = models.User{
+		ID:       newID,
+		Username: googleUser.Name,
+		Email:    googleUser.Email,
+		GoogleID: &googleUser.ID,
+		ImageURL: googleUser.ImageURL,
+		Provider: "google",
+		Role:     "user",
+	}
+
+	return &user, nil
 }

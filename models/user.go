@@ -37,8 +37,14 @@ type User struct {
 	ImageURL  string  `json:"image_url" form:"image_url"`
 }
 
+//	type GoogleUserInfo struct {
+//		ID    string `json:"user_id"`
+//		Email string `json:"email"`
+//		Name  string `json:"name"`
+//	}
 type GoogleUserInfo struct {
-	ID    string `json:"user_id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	ID       string `json:"id"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	ImageURL string `json:"picture"` // ต้องตรงกับชื่อ field จาก Google API (ดึง url รูปโปรไฟล์ด้วย)
 }

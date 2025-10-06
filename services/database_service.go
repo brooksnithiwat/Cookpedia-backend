@@ -23,6 +23,25 @@ func NewDatabaseService(db *sql.DB) *DatabaseService {
 	return &DatabaseService{DB: db}
 }
 
+func (s *DatabaseService) GetUserByUsernameOrEmail(usernameOrEmail string) (*models.User, error) {
+	var user models.User
+	query := `
+		SELECT user_id, username, email, password, provider, role
+		FROM users
+		WHERE username = $1 OR email = $1
+		LIMIT 1
+	`
+	row := s.DB.QueryRow(query, usernameOrEmail)
+	err := row.Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.Provider, &user.Role)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
 // Register สมัครสมาชิกใหม่
 func (s *DatabaseService) Register(user *models.User) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -378,4 +397,57 @@ func (s *DatabaseService) GetPostWithTagsAndDetails(postID int) (map[string]inte
 	post["instructions"] = ins
 
 	return post, nil
+}
+
+// DatabaseService.go
+func (db *DatabaseService) GetPostIDsByUser(userID int64) ([]int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	query := "SELECT post_id FROM posts WHERE user_id = $1 ORDER BY post_id DESC"
+	rows, err := db.DB.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var postIDs []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		postIDs = append(postIDs, id)
+	}
+
+	return postIDs, nil
+}
+func (s *DatabaseService) GetAllPostIDs() ([]int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	query := "SELECT post_id FROM posts ORDER BY post_id DESC"
+	rows, err := s.DB.QueryContext(ctx, query)
+	if err != nil {
+		fmt.Println("[DEBUG] GetAllPostIDs query error:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var postIDs []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			fmt.Println("[DEBUG] GetAllPostIDs scan error:", err)
+			continue
+		}
+		postIDs = append(postIDs, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		fmt.Println("[DEBUG] GetAllPostIDs rows error:", err)
+		return nil, err
+	}
+
+	return postIDs, nil
 }

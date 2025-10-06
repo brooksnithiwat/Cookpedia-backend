@@ -1,4 +1,5 @@
 
+
 package services
 
 import (
@@ -109,5 +110,3 @@ var (
    ErrUserExists         = errors.New("user already exists")
    ErrInvalidCredentials = errors.New("invalid credentials")
 )
-
-
