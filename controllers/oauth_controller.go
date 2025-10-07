@@ -106,16 +106,29 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 		&user.Role, &user.Firstname, &user.Lastname, &user.Phone, &user.Aboutme, &user.ImageURL,
 	)
 	if err == nil {
+		// อัปเดตเฉพาะ username, email (ไม่แตะ image_url)
 		_, err = config.SQLDB.Exec(
-			"UPDATE users SET username=$1, email=$2, image_url=$3 WHERE user_id=$4",
-			googleUser.Name, googleUser.Email, googleUser.ImageURL, user.ID,
+			"UPDATE users SET username=$1, email=$2 WHERE user_id=$3",
+			googleUser.Name, googleUser.Email, user.ID,
 		)
 		if err != nil {
 			return nil, err
 		}
+
 		user.Username = googleUser.Name
 		user.Email = googleUser.Email
-		user.ImageURL = googleUser.ImageURL
+
+		// ถ้ายังไม่มี image_url ให้เติมรอบแรกเท่านั้น
+		if user.ImageURL == "" {
+			_, err = config.SQLDB.Exec(
+				"UPDATE users SET image_url=$1 WHERE user_id=$2",
+				googleUser.ImageURL, user.ID,
+			)
+			if err == nil {
+				user.ImageURL = googleUser.ImageURL
+			}
+		}
+
 		return &user, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -132,15 +145,28 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 		&user.Role, &user.Firstname, &user.Lastname, &user.Phone, &user.Aboutme, &user.ImageURL,
 	)
 	if err == nil {
+		// อัปเดตเฉพาะ google_id (ไม่แตะ image_url)
 		_, err = config.SQLDB.Exec(
-			"UPDATE users SET google_id=$1, image_url=$2 WHERE user_id=$3",
-			googleUser.ID, googleUser.ImageURL, user.ID,
+			"UPDATE users SET google_id=$1 WHERE user_id=$2",
+			googleUser.ID, user.ID,
 		)
 		if err != nil {
 			return nil, err
 		}
+
 		user.GoogleID = &googleUser.ID
-		user.ImageURL = googleUser.ImageURL
+
+		// ถ้ายังไม่มี image_url ให้เติมรอบแรกเท่านั้น
+		if user.ImageURL == "" {
+			_, err = config.SQLDB.Exec(
+				"UPDATE users SET image_url=$1 WHERE user_id=$2",
+				googleUser.ImageURL, user.ID,
+			)
+			if err == nil {
+				user.ImageURL = googleUser.ImageURL
+			}
+		}
+
 		return &user, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -173,7 +199,7 @@ func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
 		ID:        newID,
 		Username:  googleUser.Name,
 		Email:     googleUser.Email,
-		Password:  "", // password เป็น empty string
+		Password:  "",
 		Firstname: "",
 		Lastname:  "",
 		Phone:     "",
