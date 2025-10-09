@@ -108,5 +108,5 @@ func (s *AuthService) Login(usernameOrEmail, password string) (string, string, e
 var (
 	ErrMissingFields      = errors.New("username, email, and password are required")
 	ErrUserExists         = errors.New("user already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrInvalidCredentials = errors.New("invalid username/password")
 )
