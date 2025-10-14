@@ -28,13 +28,13 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	api := e.Group("/api")
 	api.Use(jwtmiddleware.JWTMiddleware())
 
-	api.GET("/profile", func(c echo.Context) error {
-		userID := c.Get("user_id")
-		return c.JSON(200, echo.Map{
-			"message": "You are logged in",
-			"user_id": userID,
-		})
-	})
+	// api.GET("/profile", func(c echo.Context) error {
+	// 	userID := c.Get("user_id")
+	// 	return c.JSON(200, echo.Map{
+	// 		"message": "You are logged in",
+	// 		"user_id": userID,
+	// 	})
+	// })
 
 	// Get current user info
 	// api.GET("/me", controllers.GetCurrentUser)
