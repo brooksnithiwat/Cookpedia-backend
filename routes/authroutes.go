@@ -46,6 +46,7 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	api.POST("/createpost", authController.CreatePost)               //หน้า post
 	api.PUT("/editpost/:id", authController.EditPostByPostID)        ////หน้า edit post (เข้าได้ผ่าน post_id)
 	api.DELETE("/deletepost/:id", authController.DeletePostbyPostID) //หน้าลบ post ของตัวเอง(เข้าได้ผ่าน post_id)
+
 	// api.POST("/user/ratepost", authController.RatePost)
 	api.GET("/getpost/:id", authController.GetPostByPostID) //หน้าดู post คนอื่น            //get post จาก post id
 	api.GET("/mypost", authController.GetAllMyPost)         //หน้าดู post ทั้งหมดของฉัน          //get post ทั้งหมดของฉัน (เช็ค user_id จาก token)

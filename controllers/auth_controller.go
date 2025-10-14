@@ -68,3 +68,5 @@ func (ac *AuthController) Login(c echo.Context) error {
 		"Role":  dbUser,
 	})
 }
+
+

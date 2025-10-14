@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	// "fmt"
+	"fmt"
 	"go-auth/config"
 	"go-auth/models"
 	"net/http"
@@ -40,6 +40,7 @@ func GoogleCallback(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Authorization code not provided"})
 	}
 
+	// แลก code เป็น access token ของ Google
 	token, err := config.GoogleOAuthConfig.Exchange(c.Request().Context(), code)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Failed to exchange code for token"})
@@ -57,6 +58,7 @@ func GoogleCallback(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to decode user info"})
 	}
 
+	// หา หรือ สร้าง user ใน DB
 	dbUser, err := findOrCreateUser(googleUser)
 	if err != nil {
 		c.Logger().Error(err)
@@ -66,24 +68,158 @@ func GoogleCallback(c echo.Context) error {
 		})
 	}
 
-	tokenStr, err := generateJWTToken(dbUser.ID)
+	// generate JWT token แบบเดียวกับ Login ปกติ
+	tokenStr, err := generateJWTToken(dbUser) // note: ต้องแก้ generateJWTToken ให้รับ *models.User
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to generate token"})
 	}
 
-	// ✅ return JSON แบบที่คุณต้องการ
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL != "" {
+		// redirect ไป frontend พร้อม token และ role
+		redirectURL := fmt.Sprintf("%s/auth/success?token=%s&role=%s", frontendURL, tokenStr, dbUser.Role)
+		return c.Redirect(http.StatusFound, redirectURL)
+	}
+
+	// ถ้าไม่มี frontend URL → return JSON แบบ unified
 	return c.JSON(http.StatusOK, echo.Map{
 		"token": tokenStr,
-		"Role":  dbUser.Role,
+		"user": map[string]interface{}{
+			"id":       dbUser.ID,
+			"username": dbUser.Username,
+			"email":    dbUser.Email,
+			"role":     dbUser.Role,
+		},
 	})
+}
+
+func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
+	var user models.User
+
+	// 1. หา user ด้วย google_id
+	row := config.SQLDB.QueryRow(
+		"SELECT user_id, username, email, google_id, provider, role, firstname, lastname, phone, aboutme, image_url FROM users WHERE google_id=$1",
+		googleUser.ID,
+	)
+	err := row.Scan(
+		&user.ID, &user.Username, &user.Email, &user.GoogleID, &user.Provider,
+		&user.Role, &user.Firstname, &user.Lastname, &user.Phone, &user.Aboutme, &user.ImageURL,
+	)
+	if err == nil {
+		// อัปเดตเฉพาะ username, email (ไม่แตะ image_url)
+		_, err = config.SQLDB.Exec(
+			"UPDATE users SET username=$1, email=$2 WHERE user_id=$3",
+			googleUser.Name, googleUser.Email, user.ID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		user.Username = googleUser.Name
+		user.Email = googleUser.Email
+
+		// ถ้ายังไม่มี image_url ให้เติมรอบแรกเท่านั้น
+		if user.ImageURL == "" {
+			_, err = config.SQLDB.Exec(
+				"UPDATE users SET image_url=$1 WHERE user_id=$2",
+				googleUser.ImageURL, user.ID,
+			)
+			if err == nil {
+				user.ImageURL = googleUser.ImageURL
+			}
+		}
+
+		return &user, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	// 2. หา user ด้วย email
+	row = config.SQLDB.QueryRow(
+		"SELECT user_id, username, email, google_id, provider, role, firstname, lastname, phone, aboutme, image_url FROM users WHERE email=$1",
+		googleUser.Email,
+	)
+	err = row.Scan(
+		&user.ID, &user.Username, &user.Email, &user.GoogleID, &user.Provider,
+		&user.Role, &user.Firstname, &user.Lastname, &user.Phone, &user.Aboutme, &user.ImageURL,
+	)
+	if err == nil {
+		// อัปเดตเฉพาะ google_id (ไม่แตะ image_url)
+		_, err = config.SQLDB.Exec(
+			"UPDATE users SET google_id=$1 WHERE user_id=$2",
+			googleUser.ID, user.ID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		user.GoogleID = &googleUser.ID
+
+		// ถ้ายังไม่มี image_url ให้เติมรอบแรกเท่านั้น
+		if user.ImageURL == "" {
+			_, err = config.SQLDB.Exec(
+				"UPDATE users SET image_url=$1 WHERE user_id=$2",
+				googleUser.ImageURL, user.ID,
+			)
+			if err == nil {
+				user.ImageURL = googleUser.ImageURL
+			}
+		}
+
+		return &user, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	// 3. สร้าง user ใหม่ พร้อม default field แบบ Register
+	var newID int
+	err = config.SQLDB.QueryRow(
+		`INSERT INTO users(
+			username,email,password,firstname,lastname,phone,aboutme,image_url,google_id,provider,role
+		) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING user_id`,
+		googleUser.Name,     // username
+		googleUser.Email,    // email
+		"",                  // password
+		"",                  // firstname
+		"",                  // lastname
+		"",                  // phone
+		"",                  // aboutme
+		googleUser.ImageURL, // image_url
+		googleUser.ID,       // google_id
+		"google",            // provider
+		"user",              // role
+	).Scan(&newID)
+	if err != nil {
+		return nil, err
+	}
+
+	user = models.User{
+		ID:        newID,
+		Username:  googleUser.Name,
+		Email:     googleUser.Email,
+		Password:  "",
+		Firstname: "",
+		Lastname:  "",
+		Phone:     "",
+		Aboutme:   "",
+		ImageURL:  googleUser.ImageURL,
+		GoogleID:  &googleUser.ID,
+		Provider:  "google",
+		Role:      "user",
+	}
+
+	return &user, nil
 }
 
 // -----------------------------
 // JWT
 // -----------------------------
-func generateJWTToken(userID int) (string, error) {
+func generateJWTToken(user *models.User) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id": userID,
+		"user_id": user.ID,
+		"role":    user.Role,
 		"exp":     time.Now().Add(72 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -98,170 +234,4 @@ func generateRandomState() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)
-}
-
-// func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
-// 	var user models.User
-// 	var googleID, imageURL sql.NullString
-
-// 	// 1. หา user ด้วย google_id
-// 	row := config.SQLDB.QueryRow(
-// 		"SELECT user_id, username, email, google_id, image_url, provider, role FROM users WHERE google_id=$1",
-// 		googleUser.ID,
-// 	)
-// 	err := row.Scan(&user.ID, &user.Username, &user.Email, &googleID, &imageURL, &user.Provider, &user.Role)
-// 	if err == nil {
-// 		if googleID.Valid {
-// 			user.GoogleID = &googleID.String
-// 		}
-// 		if imageURL.Valid {
-// 			user.ImageURL = imageURL.String
-// 		}
-// 		// อัปเดตชื่อ, อีเมล และรูปจาก Google
-// 		_, err = config.SQLDB.Exec(
-// 			"UPDATE users SET username=$1, email=$2, google_id=$3, image_url=$4 WHERE user_id=$5",
-// 			googleUser.Name, googleUser.Email, googleUser.ID, googleUser.ImageURL, user.ID,
-// 		)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		user.GoogleID = &googleUser.ID
-// 		user.ImageURL = googleUser.ImageURL
-// 		return &user, nil
-// 	}
-// 	if !errors.Is(err, sql.ErrNoRows) {
-// 		return nil, err
-// 	}
-
-// 	// 2. หา user ด้วย email
-// 	row = config.SQLDB.QueryRow(
-// 		"SELECT user_id, username, email, google_id, image_url, provider, role FROM users WHERE email=$1",
-// 		googleUser.Email,
-// 	)
-// 	err = row.Scan(&user.ID, &user.Username, &user.Email, &googleID, &imageURL, &user.Provider, &user.Role)
-// 	if err == nil {
-// 		if googleID.Valid {
-// 			user.GoogleID = &googleID.String
-// 		}
-// 		if imageURL.Valid {
-// 			user.ImageURL = imageURL.String
-// 		}
-// 		// bind google_id + image_url ให้ user เดิม
-// 		_, err = config.SQLDB.Exec(
-// 			"UPDATE users SET google_id=$1, image_url=$2, provider=$3 WHERE user_id=$4",
-// 			googleUser.ID, googleUser.ImageURL, "google", user.ID,
-// 		)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		user.GoogleID = &googleUser.ID
-// 		user.ImageURL = googleUser.ImageURL
-// 		user.Provider = "google"
-// 		return &user, nil
-// 	}
-// 	if !errors.Is(err, sql.ErrNoRows) {
-// 		return nil, err
-// 	}
-
-// 	// 3. ถ้าไม่เจอ → สร้าง user ใหม่
-// 	var newID int
-// 	err = config.SQLDB.QueryRow(
-// 		"INSERT INTO users(username,email,google_id,image_url,provider,role) VALUES($1,$2,$3,$4,$5,$6) RETURNING user_id",
-// 		googleUser.Name, googleUser.Email, googleUser.ID, googleUser.ImageURL, "google", "user",
-// 	).Scan(&newID)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	user = models.User{
-// 		ID:       newID,
-// 		Username: googleUser.Name,
-// 		Email:    googleUser.Email,
-// 		GoogleID: &googleUser.ID,
-// 		ImageURL: googleUser.ImageURL,
-// 		Provider: "google",
-// 		Role:     "user",
-// 	}
-
-// 	return &user, nil
-// }
-
-func findOrCreateUser(googleUser models.GoogleUserInfo) (*models.User, error) {
-	var user models.User
-	var googleID sql.NullString
-
-	// 1. หา user ด้วย google_id
-	row := config.SQLDB.QueryRow(
-		"SELECT user_id, username, email, google_id, image_url, provider, role FROM users WHERE google_id=$1",
-		googleUser.ID,
-	)
-	var imageURL string
-	err := row.Scan(&user.ID, &user.Username, &user.Email, &googleID, &imageURL, &user.Provider, &user.Role)
-	if err == nil {
-		if googleID.Valid {
-			user.GoogleID = &googleID.String
-		}
-		user.ImageURL = imageURL // ไม่อัปเดตรูป
-		// update ชื่อ + email เท่านั้น
-		_, err = config.SQLDB.Exec(
-			"UPDATE users SET username=$1, email=$2 WHERE user_id=$3",
-			googleUser.Name, googleUser.Email, user.ID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return &user, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	// 2. หา user ด้วย email
-	row = config.SQLDB.QueryRow(
-		"SELECT user_id, username, email, google_id, image_url, provider, role FROM users WHERE email=$1",
-		googleUser.Email,
-	)
-	err = row.Scan(&user.ID, &user.Username, &user.Email, &googleID, &imageURL, &user.Provider, &user.Role)
-	if err == nil {
-		if googleID.Valid {
-			user.GoogleID = &googleID.String
-		}
-		user.ImageURL = imageURL // ไม่อัปเดตรูป
-		// bind google_id ให้ user เดิม แต่ไม่อัปเดตรูป
-		_, err = config.SQLDB.Exec(
-			"UPDATE users SET google_id=$1, provider=$2 WHERE user_id=$3",
-			googleUser.ID, "google", user.ID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		user.GoogleID = &googleUser.ID
-		user.Provider = "google"
-		return &user, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	// 3. ถ้าไม่เจอ → สร้าง user ใหม่ พร้อม image_url
-	var newID int
-	err = config.SQLDB.QueryRow(
-		"INSERT INTO users(username,email,google_id,image_url,provider,role) VALUES($1,$2,$3,$4,$5,$6) RETURNING user_id",
-		googleUser.Name, googleUser.Email, googleUser.ID, googleUser.ImageURL, "google", "user",
-	).Scan(&newID)
-	if err != nil {
-		return nil, err
-	}
-
-	user = models.User{
-		ID:       newID,
-		Username: googleUser.Name,
-		Email:    googleUser.Email,
-		GoogleID: &googleUser.ID,
-		ImageURL: googleUser.ImageURL,
-		Provider: "google",
-		Role:     "user",
-	}
-
-	return &user, nil
 }

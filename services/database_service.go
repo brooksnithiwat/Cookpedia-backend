@@ -75,7 +75,7 @@ func (s *DatabaseService) Login(usernameOrEmail, password string) (*models.User,
 	err := row.Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.GoogleID, &user.Provider, &user.Role, &user.Firstname, &user.Lastname, &user.Phone, &user.Aboutme, &user.ImageURL)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.New("invalid credentials")
+			return nil, errors.New("invalid username/password")
 		}
 		return nil, err
 	}
