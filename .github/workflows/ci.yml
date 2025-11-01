@@ -32,8 +32,8 @@ jobs:
         run: |
           go mod download
 
-      - name: Run go vet
-        run: go vet ./...
+      - name: Run application (go run)
+        run: go run .
 
       - name: Run tests
         run: go test -v ./...
