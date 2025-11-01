@@ -42,7 +42,11 @@ jobs:
 
       - name: Install golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOPATH/bin v1.56.0
+          # Install into $HOME/go/bin which is writable in GitHub runners
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $HOME/go/bin v1.56.0
+
+      - name: Add golangci-lint to PATH
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Run golangci-lint [non-blocking]
         continue-on-error: true
