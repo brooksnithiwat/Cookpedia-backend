@@ -1,5 +1,5 @@
 ### Multi-stage Dockerfile for Cookpedia Backend
-FROM golang:1.20-alpine AS builder
+FROM golang:1.24-alpine AS builder
 RUN apk add --no-cache git ca-certificates
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -11,6 +11,6 @@ FROM alpine:3.18
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/cookpedia_backend ./cookpedia_backend
-EXPOSE 8080แ
+EXPOSE 8080
 ENV GIN_MODE=release
 CMD ["/app/cookpedia_backend"]
