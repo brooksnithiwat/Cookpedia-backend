@@ -5,7 +5,8 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/cookpedia_backend ./
+RUN go version && go env && \
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -x -o /app/cookpedia_backend ./
 
 FROM alpine:3.18
 RUN apk add --no-cache ca-certificates
