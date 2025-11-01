@@ -1,8 +1,6 @@
 package controllers
 
 import (
-	"net/http"
-  	"strings"
 	"go-auth/models"
 	"go-auth/services"
 	"net/http"
