@@ -26,7 +26,7 @@ func JWTMiddleware() echo.MiddlewareFunc {
 			if err != nil || !token.Valid {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 			}
-
+			
 			// สามารถเก็บ claims ลง context หรือ ดึงข้อมูล user_id ก็ได้
 			if claims, ok := token.Claims.(jwt.MapClaims); ok {
 				c.Set("user_id", claims["user_id"])

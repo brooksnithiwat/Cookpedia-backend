@@ -5,6 +5,8 @@ import (
   	"strings"
 	"go-auth/models"
 	"go-auth/services"
+	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 )
@@ -44,7 +46,9 @@ func (ac *AuthController) Register(c echo.Context) error {
 	} else if err == services.ErrUserExists {
 		return c.JSON(http.StatusConflict, echo.Map{"message": err.Error()})
 	} else if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to register user"})
+		return c.JSON(http.StatusInternalServerError, echo.Map{
+			"message": "Failed to register user",
+			"error":   err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"message": "User registered successfully"})
@@ -68,5 +72,3 @@ func (ac *AuthController) Login(c echo.Context) error {
 		"Role":  dbUser,
 	})
 }
-
-

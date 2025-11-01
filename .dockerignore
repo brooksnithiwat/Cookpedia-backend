@@ -1,0 +1,29 @@
+# VCS
+.git
+.gitignore
+
+# Local IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Secrets / env
+.env
+.env.local
+.env.*.local
+.secrets
+
+# Node / vendor / build artifacts (not needed in image build)
+node_modules/
+vendor/
+bin/
+coverage.out
+
+# Logs / temp
+*.log
+tmp/
+dist/
+
+# CI/CD configs (optional to exclude)
+.github/
