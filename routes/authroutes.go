@@ -20,6 +20,9 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	e.POST("/register", authController.Register)
 	e.POST("/login", authController.Login)
 
+	//e.GET("/getallpost", authController.GetAllPost)   //list all post (include post content and user info)
+	//searchpost by ingredients,category
+
 	// Google OAuth routes
 	e.GET("/auth/google", controllers.GoogleLogin)
 	e.GET("/auth/google/callback", controllers.GoogleCallback)
@@ -43,7 +46,9 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	api.GET("/userprofile", authController.GetUserProfile)         //หน้า show user profile (ของเรา)
 	api.GET("/userprofile/:id", authController.GetUserProfileByID) //หน้า show user profile (ของเรา)
 	api.PUT("/userprofile", authController.UpdateUserProfile)      //หน้า edit user profile
-	api.POST("/createpost", authController.CreatePost)             //หน้า post
+	api.POST("/createpost", authController.CreatePost)             //หน้า create post
+	api.GET("/mypost", authController.GetAllMyPost)                //หน้า my profile
+
 	//api.PUT("/editpost/:id", authController.EditPostByPostID)        ////หน้า edit post (เข้าได้ผ่าน post_id)
 	//api.DELETE("/deletepost/:id", authController.DeletePostbyPostID) //หน้าลบ post ของตัวเอง(เข้าได้ผ่าน post_id)
 
