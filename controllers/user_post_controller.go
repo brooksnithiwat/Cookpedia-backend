@@ -96,53 +96,91 @@ import (
 // 	return c.JSON(http.StatusOK, echo.Map{"message": "Post deleted successfully"})
 // }
 
-// func (ac *AuthController) GetAllMyPost(c echo.Context) error {
-// 	// 1) ตรวจสอบ user_id จาก token
-// 	userID := c.Get("user_id")
-// 	if userID == nil {
-// 		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
-// 	}
+func (ac *AuthController) GetAllMyPost(c echo.Context) error {
+	// 1) ตรวจสอบ user_id จาก token
+	uid := c.Get("user_id")
+	if uid == nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
+	}
 
-// 	uidStr := fmt.Sprintf("%v", userID)
-// 	userIDInt, err := strconv.ParseInt(uidStr, 10, 64)
-// 	if err != nil {
-// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Invalid user_id"})
-// 	}
+	uidStr := fmt.Sprintf("%v", uid)
+	userIDInt64, err := strconv.ParseInt(uidStr, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Invalid user_id"})
+	}
 
-// 	// 2) ดึงโพสต์ทั้งหมดของ user
-// 	postIDs, err := ac.AuthService.DBService.GetPostIDsByUser(userIDInt)
-// 	if err != nil {
-// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to fetch posts"})
-// 	}
+	// 2) ดึง post IDs ของ user คนนี้
+	postIDs, err := ac.AuthService.DBService.GetPostIDsByUser(userIDInt64)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to fetch posts", "error": err.Error()})
+	}
 
-// 	posts := []models.PostResponse{}
+	// 3) ดึงข้อมูล user (owner) ครั้งเดียว
+	fields := []string{"user_id", "username", "image_url"}
+	whereCon := "user_id = ?"
+	whereArgs := []interface{}{userIDInt64}
+	users, err := ac.AuthService.DBService.SelectData(
+		"users",
+		fields,
+		true,
+		whereCon,
+		whereArgs,
+		false,
+		"",
+		"",
+		"",
+	)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to get user", "error": err.Error()})
+	}
+	if len(users) == 0 {
+		return c.JSON(http.StatusNotFound, echo.Map{"message": "User not found"})
+	}
+	userData := users[0]
 
-// 	// 3) สำหรับแต่ละ post_id ดึงรายละเอียดครบ
-// 	for _, postID := range postIDs {
-// 		postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
-// 		if err != nil {
-// 			continue // ถ้า post นี้มีปัญหา skip ไป
-// 		}
+	// 4) สำหรับแต่ละ post_id ดึงรายละเอียดครบ
+	posts := []models.PostResponse{}
+	for _, pid := range postIDs {
+		postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(pid)
+		if err != nil {
+			// skip problematic posts
+			continue
+		}
 
-// 		post := models.PostResponse{
-// 			PostID:          postData["post_id"].(int),
-// 			MenuName:        postData["menu_name"].(string),
-// 			Story:           postData["story"].(string),
-// 			ImageURL:        postData["image_url"].(string),
-// 			CategoriesTags:  postData["categories_tags"].([]string),
-// 			IngredientsTags: postData["ingredients_tags"].([]string),
-// 			Ingredients:     postData["ingredients"].([]string),
-// 			Instructions:    postData["instructions"].([]string),
-// 		}
+		// createdAt may be nil in postData; ParseDateTime handles nil
+		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
 
-// 		posts = append(posts, post)
-// 	}
+		owner := models.OwnerPost{
+			ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
+			Username:     fmt.Sprintf("%v", userData["username"]),
+			CreatedDate:  createdAt.Format("2006-01-02"),
+			CreatedTime:  createdAt.Format("15:04:05"),
+		}
 
-// 	return c.JSON(http.StatusOK, echo.Map{
-// 		"message": "All posts fetched successfully",
-// 		"posts":   posts,
-// 	})
-// }
+		post := models.PostDetail{
+			PostID:          postData["post_id"].(int),
+			MenuName:        postData["menu_name"].(string),
+			Story:           postData["story"].(string),
+			ImageURL:        postData["image_url"].(string),
+			CategoriesTags:  postData["categories_tags"].([]string),
+			IngredientsTags: postData["ingredients_tags"].([]string),
+			Ingredients:     postData["ingredients"].([]string),
+			Instructions:    postData["instructions"].([]string),
+		}
+
+		resp := models.PostResponse{
+			OwnerPost: owner,
+			Post:      post,
+		}
+
+		posts = append(posts, resp)
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"message": "All posts fetched successfully",
+		"posts":   posts,
+	})
+}
 
 // func (ac *AuthController) EditPostByPostID(c echo.Context) error {
 // 	// 1) ตรวจสอบ user_id จาก token
@@ -482,8 +520,8 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 	owner := models.OwnerPost{
 		ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
 		Username:     fmt.Sprintf("%v", userData["username"]),
-		CreatedDate: createdAt.Format("2006-01-02"),
-	    CreatedTime: createdAt.Format("15:04:05"),
+		CreatedDate:  createdAt.Format("2006-01-02"),
+		CreatedTime:  createdAt.Format("15:04:05"),
 	}
 
 	post := models.PostDetail{

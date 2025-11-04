@@ -70,3 +70,7 @@ func (ac *AuthController) Login(c echo.Context) error {
 		"Role":  dbUser,
 	})
 }
+
+// func (ac *AuthController) GetAllPost(c echo.Context) error {
+
+// }
