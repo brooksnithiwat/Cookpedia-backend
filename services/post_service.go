@@ -45,21 +45,31 @@ func (s *DatabaseService) ParseDateTime(input interface{}, timezone string) time
 func (s *DatabaseService) GetPostWithTagsAndDetails(postID int) (map[string]interface{}, error) {
 	post := make(map[string]interface{})
 
-	// 1) ดึง post
-	row := s.DB.QueryRow("SELECT post_id, user_id, menu_name, story, image_url FROM posts WHERE post_id = $1", postID)
+	// ✅ 1) ดึงข้อมูล post (เพิ่ม created_at)
+	row := s.DB.QueryRow(`
+		SELECT post_id, user_id, menu_name, story, image_url, created_at
+		FROM posts
+		WHERE post_id = $1
+	`, postID)
+
 	var userID int
 	var menuName, story, imageURL sql.NullString
-	err := row.Scan(&postID, &userID, &menuName, &story, &imageURL)
+	var createdAt time.Time
+
+	err := row.Scan(&postID, &userID, &menuName, &story, &imageURL, &createdAt)
 	if err != nil {
 		return nil, err
 	}
 
+	// ✅ ใส่ข้อมูลลง map (อันที่ขาดมาก่อน: user_id + created_at)
 	post["post_id"] = postID
+	post["user_id"] = userID
 	post["menu_name"] = menuName.String
 	post["story"] = story.String
 	post["image_url"] = imageURL.String
+	post["created_at"] = createdAt
 
-	// 2) ดึง categories_tags
+	// ✅ 2) ดึง categories_tags
 	cats := []string{}
 	rows, _ := s.DB.Query(`
 		SELECT ct.category_tag_name
@@ -68,6 +78,7 @@ func (s *DatabaseService) GetPostWithTagsAndDetails(postID int) (map[string]inte
 		WHERE pc.post_id = $1
 	`, postID)
 	defer rows.Close()
+
 	for rows.Next() {
 		var name string
 		rows.Scan(&name)
@@ -75,7 +86,7 @@ func (s *DatabaseService) GetPostWithTagsAndDetails(postID int) (map[string]inte
 	}
 	post["categories_tags"] = cats
 
-	// 3) ดึง ingredients_tags
+	// ✅ 3) ดึง ingredients_tags
 	ingTags := []string{}
 	rows2, _ := s.DB.Query(`
 		SELECT it.ingredient_tag_name
@@ -84,6 +95,7 @@ func (s *DatabaseService) GetPostWithTagsAndDetails(postID int) (map[string]inte
 		WHERE pi.post_id = $1
 	`, postID)
 	defer rows2.Close()
+
 	for rows2.Next() {
 		var name string
 		rows2.Scan(&name)
@@ -91,10 +103,15 @@ func (s *DatabaseService) GetPostWithTagsAndDetails(postID int) (map[string]inte
 	}
 	post["ingredients_tags"] = ingTags
 
-	// 4) ดึง ingredients_detail
+	// ✅ 4) ดึง ingredients_detail
 	ings := []string{}
-	rows3, _ := s.DB.Query("SELECT detail FROM ingredients_detail WHERE post_id = $1", postID)
+	rows3, _ := s.DB.Query(`
+		SELECT detail
+		FROM ingredients_detail
+		WHERE post_id = $1
+	`, postID)
 	defer rows3.Close()
+
 	for rows3.Next() {
 		var detail string
 		rows3.Scan(&detail)
@@ -102,10 +119,16 @@ func (s *DatabaseService) GetPostWithTagsAndDetails(postID int) (map[string]inte
 	}
 	post["ingredients"] = ings
 
-	// 5) ดึง instructions
+	// ✅ 5) ดึง instructions
 	ins := []string{}
-	rows4, _ := s.DB.Query("SELECT detail FROM instructions WHERE post_id = $1 ORDER BY step_number ASC", postID)
+	rows4, _ := s.DB.Query(`
+		SELECT detail
+		FROM instructions
+		WHERE post_id = $1
+		ORDER BY step_number ASC
+	`, postID)
 	defer rows4.Close()
+
 	for rows4.Next() {
 		var step string
 		rows4.Scan(&step)
