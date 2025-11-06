@@ -20,7 +20,7 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	e.POST("/register", authController.Register)
 	e.POST("/login", authController.Login)
 
-	//e.GET("/getallpost", authController.GetAllPost)   //list all post (include post content and user info)
+	e.GET("/getallpost", authController.GetAllPost) //list all post (include post content and user info)
 	//searchpost by ingredients,category
 
 	// Google OAuth routes
