@@ -93,8 +93,104 @@ import (
 // 		return c.JSON(http.StatusNotFound, echo.Map{"message": "Post not found"})
 // 	}
 
-// 	return c.JSON(http.StatusOK, echo.Map{"message": "Post deleted successfully"})
-// }
+//		return c.JSON(http.StatusOK, echo.Map{"message": "Post deleted successfully"})
+//	}
+func (ac *AuthController) GetAllPost(c echo.Context) error {
+
+	// 1) ดึง post_ids ทั้งหมด
+	postIDs, err := ac.AuthService.DBService.GetAllPostIDs()
+	if err != nil {
+		fmt.Println("[ERROR] GetAllPostIDs error:", err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to fetch posts"})
+	}
+
+	fmt.Println("[DEBUG] All PostIDs:", postIDs)
+
+	posts := []models.PostResponse{}
+
+	// 2) Loop ทุก postID
+	for _, postID := range postIDs {
+
+		fmt.Println("[DEBUG] Fetching postID:", postID)
+
+		// ✅ ดึงทุกข้อมูลของ post (tags, ingredients, instructions)
+		postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
+		fmt.Println("[DEBUG] Result for postID =", postID, "| postData =", postData, "| err =", err)
+
+		if err != nil {
+			fmt.Println("[ERROR] GetPostWithTagsAndDetails error for post", postID, ":", err)
+			continue
+		}
+
+		// ✅ ต้องมี user_id ไม่งั้นข้าม
+		ownerID, ok := postData["user_id"].(int)
+		if !ok {
+			fmt.Println("[ERROR] ownerID missing for post", postID)
+			continue
+		}
+
+		fmt.Println("[DEBUG] ownerID for post", postID, "=", ownerID)
+
+		// ✅ ดึงข้อมูลเจ้าของโพสต์
+		fields := []string{"user_id", "username", "image_url"}
+		users, err := ac.AuthService.DBService.SelectData(
+			"users",
+			fields,
+			true,
+			"user_id = ?",
+			[]interface{}{ownerID},
+			false,
+			"",
+			"",
+			"",
+		)
+
+		fmt.Println("[DEBUG] SelectData user:", users, "| err =", err)
+
+		if err != nil || len(users) == 0 {
+			fmt.Println("[ERROR] Cannot fetch user info for user_id =", ownerID)
+			continue
+		}
+
+		userData := users[0]
+
+		// ✅ created_at จำเป็นต้องมีใน postData
+		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
+
+		// ✅ Owner struct
+		owner := models.OwnerPost{
+			ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
+			Username:     fmt.Sprintf("%v", userData["username"]),
+			CreatedDate:  createdAt.Format("2006-01-02"),
+			CreatedTime:  createdAt.Format("15:04:05"),
+		}
+
+		// ✅ PostDetail struct
+		post := models.PostDetail{
+			PostID:          postData["post_id"].(int),
+			MenuName:        fmt.Sprintf("%v", postData["menu_name"]),
+			Story:           fmt.Sprintf("%v", postData["story"]),
+			ImageURL:        fmt.Sprintf("%v", postData["image_url"]),
+			CategoriesTags:  postData["categories_tags"].([]string),
+			IngredientsTags: postData["ingredients_tags"].([]string),
+			Ingredients:     postData["ingredients"].([]string),
+			Instructions:    postData["instructions"].([]string),
+		}
+
+		// ✅ รวมข้อมูลลงใน response list
+		posts = append(posts, models.PostResponse{
+			OwnerPost: owner,
+			Post:      post,
+		})
+	}
+
+	fmt.Println("[DEBUG] Final posts length:", len(posts))
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"message": "All posts fetched successfully",
+		"posts":   posts,
+	})
+}
 
 func (ac *AuthController) GetAllMyPost(c echo.Context) error {
 	// 1) ตรวจสอบ user_id จาก token
