@@ -445,11 +445,10 @@ func (ac *AuthController) GetAllMyPost(c echo.Context) error {
 // 		Instructions:    postData["instructions"].([]string),
 // 	}
 
-// 	return c.JSON(http.StatusOK, echo.Map{
-// 		"post": resp,
-// 	})
-// }
-
+//		return c.JSON(http.StatusOK, echo.Map{
+//			"post": resp,
+//		})
+//	}
 func (ac *AuthController) CreatePost(c echo.Context) error {
 	userID := c.Get("user_id")
 	if userID == nil {
@@ -465,12 +464,12 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 	// อ่านค่า form
 	menuName := c.FormValue("menu_name")
 	story := c.FormValue("Details")
-	categoriesStr := c.FormValue("categories_tags")       // [1,3]
-	ingredientsTagsStr := c.FormValue("ingredients_tags") // [2,5,7]
-	ingredientsStr := c.FormValue("ingredients")          // ["Pork","Cooked Rice"]
-	instructionsStr := c.FormValue("instructions")        // ["Step1","Step2"]
+	categoriesStr := c.FormValue("categories_tags")
+	ingredientsTagsStr := c.FormValue("ingredients_tags")
+	ingredientsStr := c.FormValue("ingredients")
+	instructionsStr := c.FormValue("instructions")
 
-	//ดักว่าต้องส่งทุก field
+	// Validate input
 	if menuName == "" {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing menu name"})
 	}
@@ -490,30 +489,24 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing menu instructions"})
 	}
 
-	// แปลง JSON เป็น slice
+	// Convert JSON input to structs
 	var categoryIDs, ingredientTagIDs []int
-	err = json.Unmarshal([]byte(categoriesStr), &categoryIDs)
-	if err != nil {
+	if err := json.Unmarshal([]byte(categoriesStr), &categoryIDs); err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid categories_tags format"})
 	}
-
-	err = json.Unmarshal([]byte(ingredientsTagsStr), &ingredientTagIDs)
-	if err != nil {
+	if err := json.Unmarshal([]byte(ingredientsTagsStr), &ingredientTagIDs); err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid ingredients_tags format"})
 	}
 
 	var ingredients, instructions []string
-	err = json.Unmarshal([]byte(ingredientsStr), &ingredients)
-	if err != nil {
+	if err := json.Unmarshal([]byte(ingredientsStr), &ingredients); err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid ingredients format"})
 	}
-
-	err = json.Unmarshal([]byte(instructionsStr), &instructions)
-	if err != nil {
+	if err := json.Unmarshal([]byte(instructionsStr), &instructions); err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid instructions format"})
 	}
 
-	// อัปโหลดไฟล์ถ้ามี
+	// Image upload
 	var imageURL string
 	file, _ := c.FormFile("image")
 	if file != nil {
@@ -522,20 +515,21 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to open image"})
 		}
 		defer src.Close()
+
 		imageURL, err = supabaseutil.UploadFile(src, file, userIDInt, "PostImage/post")
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to upload image", "error": err.Error()})
 		}
 	}
 
-	// เริ่ม transaction
+	// Start transaction
 	tx, err := ac.AuthService.DBService.DB.Begin()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to begin transaction", "error": err.Error()})
 	}
 	defer tx.Rollback()
 
-	// insert post
+	// Insert post
 	var postID int
 	err = tx.QueryRow(
 		"INSERT INTO posts (user_id, menu_name, story, image_url) VALUES ($1,$2,$3,$4) RETURNING post_id",
@@ -545,7 +539,7 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to insert post", "error": err.Error()})
 	}
 
-	// insert post_categories
+	// Insert category tags
 	for _, catID := range categoryIDs {
 		_, err := tx.Exec("INSERT INTO post_categories (post_id, category_tag_id) VALUES ($1,$2)", postID, catID)
 		if err != nil {
@@ -553,7 +547,7 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		}
 	}
 
-	// insert post_ingredients (tags)
+	// Insert ingredient tags
 	for _, ingTagID := range ingredientTagIDs {
 		_, err := tx.Exec("INSERT INTO post_ingredients (post_id, ingredient_tag_id) VALUES ($1,$2)", postID, ingTagID)
 		if err != nil {
@@ -561,7 +555,7 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		}
 	}
 
-	// insert ingredients_detail
+	// Insert ingredient details
 	for _, ing := range ingredients {
 		_, err := tx.Exec("INSERT INTO ingredients_detail (post_id, detail) VALUES ($1,$2)", postID, ing)
 		if err != nil {
@@ -569,7 +563,7 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		}
 	}
 
-	// insert instructions
+	// Insert instructions
 	for i, step := range instructions {
 		_, err := tx.Exec("INSERT INTO instructions (post_id, step_number, detail) VALUES ($1,$2,$3)", postID, i+1, step)
 		if err != nil {
@@ -577,32 +571,34 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		}
 	}
 
-	// commit transaction
-	err = tx.Commit()
-	if err != nil {
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to commit transaction", "error": err.Error()})
 	}
 
-	// ดึงข้อมูลครบพร้อม join
+	// ✅ ดึงข้อมูล post พร้อม tags, ingredients, instructions
 	postData, _ := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
 
-	//ดึงค่า date-time ปัจจุบันจากใน post-services
+	// ✅ Convert created_at → Timezone Bangkok
 	createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
 
+	// ✅ ดึง user data ของเจ้าของโพสต์
 	fields := []string{"user_id", "username", "image_url"}
 	whereCon := "user_id = ?"
-	whereArgs := []interface{}{userID}
+	whereArgs := []interface{}{userIDInt}
+
 	users, err := ac.AuthService.DBService.SelectData(
 		"users",
 		fields,
-		true, // where
+		true,
 		whereCon,
 		whereArgs,
-		false, // join
-		"",    // joinTable
-		"",    // joinCondition
-		"",    // orderAndLimit
+		false,
+		"",
+		"",
+		"",
 	)
+
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to get user", "error": err.Error()})
 	}
@@ -611,8 +607,9 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, echo.Map{"message": "User not found"})
 	}
 
-	userData := users[0] // map[string]interface{}
+	userData := users[0]
 
+	// ✅ Build OwnerPost
 	owner := models.OwnerPost{
 		ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
 		Username:     fmt.Sprintf("%v", userData["username"]),
@@ -620,6 +617,7 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		CreatedTime:  createdAt.Format("15:04:05"),
 	}
 
+	// ✅ Build PostDetail
 	post := models.PostDetail{
 		PostID:          postData["post_id"].(int),
 		MenuName:        postData["menu_name"].(string),
@@ -631,11 +629,11 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		Instructions:    postData["instructions"].([]string),
 	}
 
+	// ✅ Response
 	resp := models.PostResponse{
 		OwnerPost: owner,
 		Post:      post,
 	}
 
 	return c.JSON(http.StatusOK, resp)
-
 }
