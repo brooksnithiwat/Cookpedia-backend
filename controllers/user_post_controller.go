@@ -7,6 +7,7 @@ import (
 	"go-auth/supabaseutil"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -470,23 +471,8 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 	instructionsStr := c.FormValue("instructions")
 
 	// Validate input
-	if menuName == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing menu name"})
-	}
-	if story == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing details name"})
-	}
-	if categoriesStr == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing category tags"})
-	}
-	if ingredientsTagsStr == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing ingredients tags"})
-	}
-	if ingredientsStr == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing ingredients detail"})
-	}
-	if instructionsStr == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing menu instructions"})
+	if menuName == "" || story == "" || categoriesStr == "" || ingredientsTagsStr == "" || ingredientsStr == "" || instructionsStr == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing required fields"})
 	}
 
 	// Convert JSON input to structs
@@ -576,13 +562,61 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to commit transaction", "error": err.Error()})
 	}
 
-	// ✅ ดึงข้อมูล post พร้อม tags, ingredients, instructions
-	postData, _ := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
+	// ดึงข้อมูล post พร้อม tags, ingredients, instructions
+	postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to get post details", "error": err.Error()})
+	}
 
-	// ✅ Convert created_at → Timezone Bangkok
-	createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
+	// Safe type assertions
+	postIDVal, ok := postData["post_id"]
+	if !ok || postIDVal == nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Post ID is nil"})
+	}
+	var postIDIntSafe int
+	switch v := postIDVal.(type) {
+	case int:
+		postIDIntSafe = v
+	case int64:
+		postIDIntSafe = int(v)
+	default:
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Post ID type is invalid"})
+	}
 
-	// ✅ ดึง user data ของเจ้าของโพสต์
+	// CategoriesTags
+	cats, ok := postData["categories_tags"].([]string)
+	if !ok || cats == nil {
+		cats = []string{}
+	}
+
+	// IngredientsTags
+	ingTags, ok := postData["ingredients_tags"].([]string)
+	if !ok || ingTags == nil {
+		ingTags = []string{}
+	}
+
+	// Ingredients
+	ings, ok := postData["ingredients"].([]string)
+	if !ok || ings == nil {
+		ings = []string{}
+	}
+
+	// Instructions
+	ins, ok := postData["instructions"].([]string)
+	if !ok || ins == nil {
+		ins = []string{}
+	}
+
+	// created_at
+	createdAtVal := postData["created_at"]
+	var createdAt time.Time
+	if createdAtVal != nil {
+		createdAt = ac.AuthService.DBService.ParseDateTime(createdAtVal, "Asia/Bangkok")
+	} else {
+		createdAt = time.Now()
+	}
+
+	// ดึง user data
 	fields := []string{"user_id", "username", "image_url"}
 	whereCon := "user_id = ?"
 	whereArgs := []interface{}{userIDInt}
@@ -598,18 +632,14 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		"",
 		"",
 	)
-
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to get user", "error": err.Error()})
 	}
-
 	if len(users) == 0 {
 		return c.JSON(http.StatusNotFound, echo.Map{"message": "User not found"})
 	}
-
 	userData := users[0]
 
-	// ✅ Build OwnerPost
 	owner := models.OwnerPost{
 		ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
 		Username:     fmt.Sprintf("%v", userData["username"]),
@@ -617,19 +647,17 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		CreatedTime:  createdAt.Format("15:04:05"),
 	}
 
-	// ✅ Build PostDetail
 	post := models.PostDetail{
-		PostID:          postData["post_id"].(int),
-		MenuName:        postData["menu_name"].(string),
-		Story:           postData["story"].(string),
-		ImageURL:        postData["image_url"].(string),
-		CategoriesTags:  postData["categories_tags"].([]string),
-		IngredientsTags: postData["ingredients_tags"].([]string),
-		Ingredients:     postData["ingredients"].([]string),
-		Instructions:    postData["instructions"].([]string),
+		PostID:          postIDIntSafe,
+		MenuName:        fmt.Sprintf("%v", postData["menu_name"]),
+		Story:           fmt.Sprintf("%v", postData["story"]),
+		ImageURL:        fmt.Sprintf("%v", postData["image_url"]),
+		CategoriesTags:  cats,
+		IngredientsTags: ingTags,
+		Ingredients:     ings,
+		Instructions:    ins,
 	}
 
-	// ✅ Response
 	resp := models.PostResponse{
 		OwnerPost: owner,
 		Post:      post,
