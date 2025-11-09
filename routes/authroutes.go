@@ -20,9 +20,9 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	e.POST("/register", authController.Register)
 	e.POST("/login", authController.Login)
 
-	e.GET("/getallpost", authController.GetAllPost)      //list all post (include post content and user info)
-	e.GET("/searchpost/:name", authController.SeachPost) //searchpost by name
-    e.GET("/getallpost/:username", authController.GetAllPostByUsername) //get all post by username
+	e.GET("/getallpost", authController.GetAllPost)                     //list all post (include post content and user info)
+	e.GET("/searchpost/:name", authController.SeachPost)                //searchpost by name
+	e.GET("/getallpost/:username", authController.GetAllPostByUsername) //get all post by username
 
 	// Google OAuth routes
 	e.GET("/auth/google", controllers.GoogleLogin)
@@ -57,4 +57,10 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	//api.GET("/getpost/:id", authController.GetPostByPostID) //หน้าดู post คนอื่น            //get post จาก post id
 	//api.GET("/mypost", authController.GetAllMyPost)         //หน้าดู post ทั้งหมดของฉัน          //get post ทั้งหมดของฉัน (เช็ค user_id จาก token)
 	//api.GET("/getallpost", authController.GetAllPost)       //หน้าดูpost ทั้งหมดของทุกคน
+
+	//favorite
+	api.POST("/favoritepost/:postId", authController.FavoritePost)
+	api.DELETE("/unfavoritepost/:postId", authController.UnFavoritePost)
+	api.GET("/getallfavoritepost", authController.GetAllFavoritePost)
+
 }
