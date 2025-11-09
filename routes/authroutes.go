@@ -65,9 +65,8 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	api.GET("/getallfavoritepost", authController.GetAllFavoritePost)
 
 	//ratings
+	//api.POST("/ratepost/:postId", authController.RatePost)
 
 	//comment
-
-	//badge
 
 }

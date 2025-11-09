@@ -1,10 +1,11 @@
 package models
 
 type OwnerPost struct {
+	UserID       int64  `json:"user_id"`
 	ProfileImage string `json:"profile_image"`
 	Username     string `json:"username"`
-	CreatedDate string  `json:"created_date"` 
-	CreatedTime string  `json:"created_time"` 
+	CreatedDate  string `json:"created_date"`
+	CreatedTime  string `json:"created_time"`
 }
 
 type PostDetail struct {
