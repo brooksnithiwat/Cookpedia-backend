@@ -13,6 +13,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// use shared ToInt64 helper in controllers/helpers.go
+
 func (ac *AuthController) SeachPost(c echo.Context) error {
 	// Accept path param /searchpost/:name or query param ?q=...
 	name := c.Param("name")
@@ -65,6 +67,7 @@ func (ac *AuthController) SeachPost(c echo.Context) error {
 		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
 
 		owner := models.OwnerPost{
+			UserID:       ToInt64(userData["user_id"]),
 			ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
 			Username:     fmt.Sprintf("%v", userData["username"]),
 			CreatedDate:  createdAt.Format("2006-01-02"),
@@ -241,6 +244,7 @@ func (ac *AuthController) GetAllPost(c echo.Context) error {
 
 		// ✅ Owner struct
 		owner := models.OwnerPost{
+			UserID:       ToInt64(userData["user_id"]),
 			ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
 			Username:     fmt.Sprintf("%v", userData["username"]),
 			CreatedDate:  createdAt.Format("2006-01-02"),
@@ -408,6 +412,7 @@ func (ac *AuthController) GetAllPostByUsername(c echo.Context) error {
 		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
 
 		owner := models.OwnerPost{
+			UserID:       ToInt64(userData["user_id"]),
 			ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
 			Username:     fmt.Sprintf("%v", userData["username"]),
 			CreatedDate:  createdAt.Format("2006-01-02"),
@@ -636,6 +641,7 @@ func (ac *AuthController) GetPostByPostID(c echo.Context) error {
 	createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
 
 	owner := models.OwnerPost{
+		UserID:       ToInt64(userData["user_id"]),
 		ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
 		Username:     fmt.Sprintf("%v", userData["username"]),
 		CreatedDate:  createdAt.Format("2006-01-02"),

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"go-auth/models"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -101,6 +103,7 @@ func (ac *AuthController) GetAllFavoritePost(c echo.Context) error {
 	}
 
 	// 3) ดึงข้อมูล user (owner) ครั้งเดียว
+	// select profile_image to match response field
 	fieldsUser := []string{"user_id", "username", "image_url"}
 	users, err := ac.AuthService.DBService.SelectData(
 		"users",
@@ -145,11 +148,12 @@ func (ac *AuthController) GetAllFavoritePost(c echo.Context) error {
 
 		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
 
-		owner := map[string]interface{}{
-			"profile_image": fmt.Sprintf("%v", userData["profile_image"]),
-			"username":      fmt.Sprintf("%v", userData["username"]),
-			"created_date":  createdAt.Format("2006-01-02"),
-			"created_time":  createdAt.Format("15:04:05"),
+		owner := models.OwnerPost{
+			UserID:       ToInt64(userData["user_id"]),
+			ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
+			Username:     fmt.Sprintf("%v", userData["username"]),
+			CreatedDate:  createdAt.Format("2006-01-02"),
+			CreatedTime:  createdAt.Format("15:04:05"),
 		}
 
 		post := map[string]interface{}{
