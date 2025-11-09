@@ -20,9 +20,10 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	e.POST("/register", authController.Register)
 	e.POST("/login", authController.Login)
 
-	e.GET("/getallpost", authController.GetAllPost)         //list all post (include post content and user info)
-	e.GET("/searchpost/:name", authController.SeachPost)    //searchpost by name
-	e.GET("/getallpost/:id", authController.GetAllPostByID) //get all post by user_id
+	e.GET("/getallpost", authController.GetAllPost)                     //list all post (include post content and user info)
+	e.GET("/searchpost/:name", authController.SeachPost)                //searchpost by name
+	e.GET("/getallpost/:username", authController.GetAllPostByUsername) //get all post by username
+	e.GET("/getpostbypostid/:id", authController.GetPostByPostID)       //หน้าดู post คนอื่น
 
 	// Google OAuth routes
 	e.GET("/auth/google", controllers.GoogleLogin)
@@ -54,7 +55,7 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	//api.DELETE("/deletepost/:id", authController.DeletePostbyPostID) //หน้าลบ post ของตัวเอง(เข้าได้ผ่าน post_id)
 
 	// api.POST("/user/ratepost", authController.RatePost)
-	//api.GET("/getpost/:id", authController.GetPostByPostID) //หน้าดู post คนอื่น            //get post จาก post id
+
 	//api.GET("/mypost", authController.GetAllMyPost)         //หน้าดู post ทั้งหมดของฉัน          //get post ทั้งหมดของฉัน (เช็ค user_id จาก token)
 	//api.GET("/getallpost", authController.GetAllPost)       //หน้าดูpost ทั้งหมดของทุกคน
 

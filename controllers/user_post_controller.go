@@ -356,16 +356,16 @@ func (ac *AuthController) GetAllMyPost(c echo.Context) error {
 }
 
 // GetAllPostByUsername returns all posts created by the given username (public)
-func (ac *AuthController) GetAllPostByID(c echo.Context) error {
-	userid := c.Param("id")
-	if strings.TrimSpace(userid) == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing user id in path"})
+func (ac *AuthController) GetAllPostByUsername(c echo.Context) error {
+	username := c.Param("username")
+	if strings.TrimSpace(username) == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing user username in path"})
 	}
 
 	// Find user_id by username
 	fields := []string{"user_id", "username", "image_url"}
-	whereCon := "user_id = ?"
-	whereArgs := []interface{}{userid}
+	whereCon := "username = ?"
+	whereArgs := []interface{}{username}
 	users, err := ac.AuthService.DBService.SelectData("users", fields, true, whereCon, whereArgs, false, "", "", "")
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to lookup user", "error": err.Error()})
@@ -569,43 +569,115 @@ func (ac *AuthController) GetAllPostByID(c echo.Context) error {
 // 	return c.JSON(http.StatusOK, echo.Map{"message": "Post updated successfully"})
 // }
 
-// func (ac *AuthController) GetPostByPostID(c echo.Context) error {
-// 	// อ่าน post_id จาก params
-// 	postIDStr := c.Param("id")
-// 	postID, err := strconv.Atoi(postIDStr)
-// 	if err != nil {
-// 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid post id"})
-// 	}
+func (ac *AuthController) GetPostByPostID(c echo.Context) error {
+	// read post_id from path param
+	postIDStr := c.Param("id")
+	postID, err := strconv.Atoi(postIDStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid post id"})
+	}
 
-// 	// ดึงข้อมูลจาก DB
-// 	postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
-// 	if err != nil {
-// 		return c.JSON(http.StatusInternalServerError, echo.Map{
-// 			"message": "Failed to fetch post",
-// 			"error":   err.Error(),
-// 		})
-// 	}
+	// fetch post details
+	postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to fetch post", "error": err.Error()})
+	}
+	if postData == nil {
+		return c.JSON(http.StatusNotFound, echo.Map{"message": "Post not found"})
+	}
 
-// 	if postData == nil {
-// 		return c.JSON(http.StatusNotFound, echo.Map{"message": "Post not found"})
-// 	}
+	// normalize post_id to int
+	var postIDInt int
+	switch v := postData["post_id"].(type) {
+	case int:
+		postIDInt = v
+	case int64:
+		postIDInt = int(v)
+	case float64:
+		postIDInt = int(v)
+	case string:
+		tmp, _ := strconv.Atoi(v)
+		postIDInt = tmp
+	default:
+		postIDInt = 0
+	}
 
-// 	// Map ข้อมูลใส่ struct response
-// 	resp := models.PostResponse{
-// 		PostID:          postData["post_id"].(int),
-// 		MenuName:        postData["menu_name"].(string),
-// 		Story:           postData["story"].(string),
-// 		ImageURL:        postData["image_url"].(string),
-// 		CategoriesTags:  postData["categories_tags"].([]string),
-// 		IngredientsTags: postData["ingredients_tags"].([]string),
-// 		Ingredients:     postData["ingredients"].([]string),
-// 		Instructions:    postData["instructions"].([]string),
-// 	}
+	// normalize user_id to int64 for querying users
+	var ownerID interface{} = postData["user_id"]
+	// Select user by user_id; DBService.SelectData accepts whereArgs as interface slice
+	// ensure we pass the same raw value, but convert strings to int64 when necessary
+	switch v := ownerID.(type) {
+	case int:
+		ownerID = int64(v)
+	case int64:
+		// ok
+	case float64:
+		ownerID = int64(v)
+	case string:
+		if tmp, err := strconv.ParseInt(v, 10, 64); err == nil {
+			ownerID = tmp
+		}
+	}
 
-//		return c.JSON(http.StatusOK, echo.Map{
-//			"post": resp,
-//		})
-//	}
+	// fetch owner/user info (use profile_image field)
+	fields := []string{"user_id", "username", "image_url"}
+	whereCon := "user_id = ?"
+	whereArgs := []interface{}{ownerID}
+	users, err := ac.AuthService.DBService.SelectData("users", fields, true, whereCon, whereArgs, false, "", "", "")
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to fetch user", "error": err.Error()})
+	}
+	if len(users) == 0 {
+		return c.JSON(http.StatusNotFound, echo.Map{"message": "Post owner not found"})
+	}
+	userData := users[0]
+
+	// parse created_at safely
+	createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
+
+	owner := models.OwnerPost{
+		ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
+		Username:     fmt.Sprintf("%v", userData["username"]),
+		CreatedDate:  createdAt.Format("2006-01-02"),
+		CreatedTime:  createdAt.Format("15:04:05"),
+	}
+
+	// helper to convert []interface{} -> []string when needed
+	toStringSlice := func(v interface{}) []string {
+		if v == nil {
+			return []string{}
+		}
+		if ss, ok := v.([]string); ok {
+			return ss
+		}
+		if si, ok := v.([]interface{}); ok {
+			out := make([]string, 0, len(si))
+			for _, it := range si {
+				out = append(out, fmt.Sprintf("%v", it))
+			}
+			return out
+		}
+		return []string{}
+	}
+
+	post := models.PostDetail{
+		PostID:          postIDInt,
+		MenuName:        fmt.Sprintf("%v", postData["menu_name"]),
+		Story:           fmt.Sprintf("%v", postData["story"]),
+		ImageURL:        fmt.Sprintf("%v", postData["image_url"]),
+		CategoriesTags:  toStringSlice(postData["categories_tags"]),
+		IngredientsTags: toStringSlice(postData["ingredients_tags"]),
+		Ingredients:     toStringSlice(postData["ingredients"]),
+		Instructions:    toStringSlice(postData["instructions"]),
+	}
+
+	resp := models.PostResponse{
+		OwnerPost: owner,
+		Post:      post,
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
 func (ac *AuthController) CreatePost(c echo.Context) error {
 	userID := c.Get("user_id")
 	if userID == nil {
