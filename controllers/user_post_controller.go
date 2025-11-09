@@ -356,16 +356,16 @@ func (ac *AuthController) GetAllMyPost(c echo.Context) error {
 }
 
 // GetAllPostByUsername returns all posts created by the given username (public)
-func (ac *AuthController) GetAllPostByUsername(c echo.Context) error {
-	username := c.Param("username")
-	if strings.TrimSpace(username) == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing username in path"})
+func (ac *AuthController) GetAllPostByID(c echo.Context) error {
+	userid := c.Param("id")
+	if strings.TrimSpace(userid) == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing user id in path"})
 	}
 
 	// Find user_id by username
 	fields := []string{"user_id", "username", "image_url"}
-	whereCon := "username = ?"
-	whereArgs := []interface{}{username}
+	whereCon := "user_id = ?"
+	whereArgs := []interface{}{userid}
 	users, err := ac.AuthService.DBService.SelectData("users", fields, true, whereCon, whereArgs, false, "", "", "")
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to lookup user", "error": err.Error()})
