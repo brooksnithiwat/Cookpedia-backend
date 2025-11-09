@@ -7,10 +7,90 @@ import (
 	"go-auth/supabaseutil"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 )
+
+func (ac *AuthController) SeachPost(c echo.Context) error {
+	// Accept path param /searchpost/:name or query param ?q=...
+	name := c.Param("name")
+	if strings.TrimSpace(name) == "" {
+		name = c.QueryParam("q")
+	}
+	if strings.TrimSpace(name) == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing search term (path param :name or query param q)"})
+	}
+
+	// find matching post IDs (case-insensitive)
+	rows, err := ac.AuthService.DBService.DB.Query("SELECT post_id FROM posts WHERE menu_name ILIKE $1 ORDER BY post_id DESC", "%"+name+"%")
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to search posts", "error": err.Error()})
+	}
+	defer rows.Close()
+
+	var postIDs []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			fmt.Printf("[DEBUG] SeachPost: scan post_id error: %v\n", err)
+			continue
+		}
+		postIDs = append(postIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed reading search results", "error": err.Error()})
+	}
+
+	posts := []models.PostResponse{}
+	for _, pid := range postIDs {
+		postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(pid)
+		if err != nil {
+			fmt.Printf("[DEBUG] SeachPost: failed to load post %d: %v\n", pid, err)
+			continue
+		}
+
+		uid := postData["user_id"]
+		fields := []string{"user_id", "username", "image_url"}
+		whereCon := "user_id = ?"
+		whereArgs := []interface{}{uid}
+		users, err := ac.AuthService.DBService.SelectData("users", fields, true, whereCon, whereArgs, false, "", "", "")
+		if err != nil || len(users) == 0 {
+			fmt.Printf("[DEBUG] SeachPost: failed to load user for post %d: err=%v user_count=%d\n", pid, err, len(users))
+			continue
+		}
+		userData := users[0]
+
+		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
+
+		owner := models.OwnerPost{
+			ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
+			Username:     fmt.Sprintf("%v", userData["username"]),
+			CreatedDate:  createdAt.Format("2006-01-02"),
+			CreatedTime:  createdAt.Format("15:04:05"),
+		}
+
+		post := models.PostDetail{
+			PostID:          postData["post_id"].(int),
+			MenuName:        postData["menu_name"].(string),
+			Story:           postData["story"].(string),
+			ImageURL:        postData["image_url"].(string),
+			CategoriesTags:  postData["categories_tags"].([]string),
+			IngredientsTags: postData["ingredients_tags"].([]string),
+			Ingredients:     postData["ingredients"].([]string),
+			Instructions:    postData["instructions"].([]string),
+		}
+
+		resp := models.PostResponse{
+			OwnerPost: owner,
+			Post:      post,
+		}
+		posts = append(posts, resp)
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"message": "Search results", "posts": posts, "post_count": len(posts)})
+}
 
 // func (ac *AuthController) GetAllPost(c echo.Context) error {
 // 	// 1) ดึง post ทั้งหมด
@@ -96,6 +176,7 @@ import (
 
 //		return c.JSON(http.StatusOK, echo.Map{"message": "Post deleted successfully"})
 //	}
+
 func (ac *AuthController) GetAllPost(c echo.Context) error {
 
 	// 1) ดึง post_ids ทั้งหมด
@@ -236,7 +317,8 @@ func (ac *AuthController) GetAllMyPost(c echo.Context) error {
 	userData := users[0]
 
 	// 4) สำหรับแต่ละ post_id ดึงรายละเอียดครบ
-	posts := []models.PostResponse{}
+	// Return a minimal response shape (owner_post + post with only post_id and image_url)
+	posts := []map[string]interface{}{}
 	for _, pid := range postIDs {
 		postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(pid)
 		if err != nil {
@@ -245,6 +327,84 @@ func (ac *AuthController) GetAllMyPost(c echo.Context) error {
 		}
 
 		// createdAt may be nil in postData; ParseDateTime handles nil
+		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
+
+		owner := map[string]interface{}{
+			"profile_image": fmt.Sprintf("%v", userData["profile_image"]),
+			"username":      fmt.Sprintf("%v", userData["username"]),
+			"created_date":  createdAt.Format("2006-01-02"),
+			"created_time":  createdAt.Format("15:04:05"),
+		}
+
+		post := map[string]interface{}{
+			"post_id":   postData["post_id"].(int),
+			"image_url": postData["image_url"].(string),
+		}
+
+		resp := map[string]interface{}{
+			"owner_post": owner,
+			"post":       post,
+		}
+
+		posts = append(posts, resp)
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"message": "All posts fetched successfully",
+		"posts":   posts,
+	})
+}
+
+// GetAllPostByUsername returns all posts created by the given username (public)
+func (ac *AuthController) GetAllPostByUsername(c echo.Context) error {
+	username := c.Param("username")
+	if strings.TrimSpace(username) == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Missing username in path"})
+	}
+
+	// Find user_id by username
+	fields := []string{"user_id", "username", "image_url"}
+	whereCon := "username = ?"
+	whereArgs := []interface{}{username}
+	users, err := ac.AuthService.DBService.SelectData("users", fields, true, whereCon, whereArgs, false, "", "", "")
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to lookup user", "error": err.Error()})
+	}
+	if len(users) == 0 {
+		return c.JSON(http.StatusNotFound, echo.Map{"message": "User not found"})
+	}
+	userData := users[0]
+
+	// user_id may be int or int64 or string; normalize to int64
+	var userIDInt64 int64
+	switch v := userData["user_id"].(type) {
+	case int64:
+		userIDInt64 = v
+	case int:
+		userIDInt64 = int64(v)
+	case float64:
+		userIDInt64 = int64(v)
+	case string:
+		tmp, _ := strconv.ParseInt(v, 10, 64)
+		userIDInt64 = tmp
+	default:
+		userIDInt64 = 0
+	}
+
+	// Get post IDs by user
+	postIDs, err := ac.AuthService.DBService.GetPostIDsByUser(userIDInt64)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to fetch posts", "error": err.Error()})
+	}
+
+	posts := []models.PostResponse{}
+	for _, pid := range postIDs {
+		postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(pid)
+		if err != nil {
+			fmt.Printf("[DEBUG] GetAllPostByUsername: failed to load post %d: %v\n", pid, err)
+			continue
+		}
+
 		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
 
 		owner := models.OwnerPost{
@@ -269,14 +429,10 @@ func (ac *AuthController) GetAllMyPost(c echo.Context) error {
 			OwnerPost: owner,
 			Post:      post,
 		}
-
 		posts = append(posts, resp)
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{
-		"message": "All posts fetched successfully",
-		"posts":   posts,
-	})
+	return c.JSON(http.StatusOK, echo.Map{"message": "User posts fetched", "posts": posts, "post_count": len(posts)})
 }
 
 // func (ac *AuthController) EditPostByPostID(c echo.Context) error {
