@@ -11,6 +11,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
+
 func (s *DatabaseService) ParseDateTime(input interface{}, timezone string) time.Time {
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
