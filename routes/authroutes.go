@@ -65,8 +65,13 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	api.GET("/getallfavoritepost", authController.GetAllFavoritePost)
 
 	//ratings
-	//api.POST("/ratepost/:postId", authController.RatePost)
+	api.POST("/ratepost", authController.RatePost)
+	api.GET("/getratepost", authController.GetRatePost) //ไม่ได้ใช้ เอามาเทสเฉยๆ
 
 	//comment
+	api.GET("/getcommentsbypostid/:id", authController.GetCommentsByPostID)
+	api.POST("/addcomment", authController.AddComment)
+	api.PUT("/editcomment", authController.EditComment)
+	api.DELETE("/deletecommentbycommentid/:id", authController.DeleteCommentByCommentID)
 
 }

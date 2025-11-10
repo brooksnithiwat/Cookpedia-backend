@@ -85,6 +85,11 @@ func (ac *AuthController) SeachPost(c echo.Context) error {
 			Instructions:    postData["instructions"].([]string),
 		}
 
+		// attach average rating
+		if avg, _ := ac.AuthService.DBService.GetAvgRating(pid); true {
+			post.Star = avg
+		}
+
 		resp := models.PostResponse{
 			OwnerPost: owner,
 			Post:      post,
@@ -263,6 +268,11 @@ func (ac *AuthController) GetAllPost(c echo.Context) error {
 			Instructions:    postData["instructions"].([]string),
 		}
 
+		// attach avg rating
+		if avg, _ := ac.AuthService.DBService.GetAvgRating(postID); true {
+			post.Star = avg
+		}
+
 		// ✅ รวมข้อมูลลงใน response list
 		posts = append(posts, models.PostResponse{
 			OwnerPost: owner,
@@ -428,6 +438,11 @@ func (ac *AuthController) GetAllPostByUsername(c echo.Context) error {
 			IngredientsTags: postData["ingredients_tags"].([]string),
 			Ingredients:     postData["ingredients"].([]string),
 			Instructions:    postData["instructions"].([]string),
+		}
+
+		// attach avg rating
+		if avg, _ := ac.AuthService.DBService.GetAvgRating(pid); true {
+			post.Star = avg
 		}
 
 		resp := models.PostResponse{
@@ -677,6 +692,11 @@ func (ac *AuthController) GetPostByPostID(c echo.Context) error {
 		Instructions:    toStringSlice(postData["instructions"]),
 	}
 
+	// attach star (average rating)
+	if avg, _ := ac.AuthService.DBService.GetAvgRating(postIDInt); true {
+		post.Star = avg
+	}
+
 	resp := models.PostResponse{
 		OwnerPost: owner,
 		Post:      post,
@@ -890,6 +910,11 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 		IngredientsTags: ingTags,
 		Ingredients:     ings,
 		Instructions:    ins,
+	}
+
+	// attach avg rating
+	if avg, _ := ac.AuthService.DBService.GetAvgRating(postIDIntSafe); true {
+		post.Star = avg
 	}
 
 	resp := models.PostResponse{
