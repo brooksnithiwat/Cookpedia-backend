@@ -17,6 +17,7 @@ type PostDetail struct {
 	IngredientsTags []string `json:"ingredients_tags"`
 	Ingredients     []string `json:"ingredients"`
 	Instructions    []string `json:"instructions"`
+	Star            float64  `json:"star"`
 }
 
 type PostResponse struct {

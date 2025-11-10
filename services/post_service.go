@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"reflect"
 	"time"
 
 	_ "github.com/lib/pq"
 )
-
 
 func (s *DatabaseService) ParseDateTime(input interface{}, timezone string) time.Time {
 	loc, err := time.LoadLocation(timezone)
@@ -191,4 +191,98 @@ func (s *DatabaseService) GetAllPostIDs() ([]int, error) {
 	}
 
 	return postIDs, nil
+}
+
+// RatedPost คือ struct สำหรับเก็บ post_id และ rate ของ user
+type RatedPost struct {
+	PostID int
+	Rate   int
+}
+
+// ดึงโพสต์ที่ user เคยให้ rating ไว้
+func (s *DatabaseService) GetRatedPostsByUser(userID int64) ([]RatedPost, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	query := `
+        SELECT post_id, rate
+        FROM rating
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+    `
+
+	rows, err := s.DB.QueryContext(ctx, query, userID)
+	if err != nil {
+		fmt.Println("[DEBUG] GetRatedPostsByUser query error:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ratedPosts []RatedPost
+	for rows.Next() {
+		var rp RatedPost
+		if err := rows.Scan(&rp.PostID, &rp.Rate); err != nil {
+			fmt.Println("[DEBUG] GetRatedPostsByUser scan error:", err)
+			continue
+		}
+		ratedPosts = append(ratedPosts, rp)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ratedPosts, nil
+}
+
+func (s *DatabaseService) GetAvgRating(postID int) (float64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT COALESCE(AVG(rate), 0)
+		FROM rating
+		WHERE post_id = $1
+	`
+
+	var avg float64
+	err := s.DB.QueryRowContext(ctx, query, postID).Scan(&avg)
+	if err != nil {
+		fmt.Println("[DEBUG] GetAvgRating error:", err)
+		return 0, err
+	}
+
+	// ปัดเป็นทศนิยม 2 ตำแหน่ง
+	avg = math.Round(avg*100) / 100
+
+	return avg, nil
+}
+
+func (s *DatabaseService) PostExists(postID int) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	query := `SELECT EXISTS(SELECT 1 FROM posts WHERE post_id = $1)`
+
+	var exists bool
+	err := s.DB.QueryRowContext(ctx, query, postID).Scan(&exists)
+	if err != nil {
+		fmt.Println("[DEBUG] PostExists error:", err)
+		return false, err
+	}
+
+	return exists, nil
+}
+func (s *DatabaseService) CommentBelongsToUser(commentID, userID int) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	query := `SELECT EXISTS(SELECT 1 FROM comment WHERE comment_id = $1 AND user_id = $2)`
+	var exists bool
+	err := s.DB.QueryRowContext(ctx, query, commentID, userID).Scan(&exists)
+	if err != nil {
+		fmt.Println("[DEBUG] CommentBelongsToUser error:", err)
+		return false, err
+	}
+	return exists, nil
 }
