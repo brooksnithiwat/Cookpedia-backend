@@ -6,6 +6,7 @@ import (
 	"go-auth/models"
 	"go-auth/supabaseutil"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -136,55 +137,54 @@ func (ac *AuthController) SeachPost(c echo.Context) error {
 // 	})
 // }
 
-// func (ac *AuthController) DeletePostbyPostID(c echo.Context) error {
-// 	// 1) ตรวจสอบ user_id จาก token
-// 	uid := c.Get("user_id")
-// 	if uid == nil {
-// 		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
-// 	}
-// 	userID, _ := strconv.ParseInt(fmt.Sprintf("%v", uid), 10, 64)
+func (ac *AuthController) DeletePostbyPostID(c echo.Context) error {
+	// 1) ตรวจสอบ user_id จาก token
+	uid := c.Get("user_id")
+	if uid == nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
+	}
+	userID, _ := strconv.ParseInt(fmt.Sprintf("%v", uid), 10, 64)
 
-// 	// 2) ดึง post_id จาก path param
-// 	postID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-// 	if err != nil {
-// 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid post_id"})
-// 	}
+	// 2) ดึง post_id จาก path param
+	postID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid post_id"})
+	}
 
-// 	// 3) ตรวจสอบว่า user เป็นเจ้าของโพสต์
-// 	var exists bool
-// 	err = ac.AuthService.DBService.DB.QueryRow(
-// 		"SELECT EXISTS(SELECT 1 FROM posts WHERE post_id=$1 AND user_id=$2)",
-// 		postID, userID,
-// 	).Scan(&exists)
-// 	if err != nil {
-// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to check post ownership", "error": err.Error()})
-// 	}
-// 	if !exists {
-// 		return c.JSON(http.StatusForbidden, echo.Map{"message": "You don't have permission to delete this post"})
-// 	}
+	// 3) ตรวจสอบว่า user เป็นเจ้าของโพสต์
+	var exists bool
+	err = ac.AuthService.DBService.DB.QueryRow(
+		"SELECT EXISTS(SELECT 1 FROM posts WHERE post_id=$1 AND user_id=$2)",
+		postID, userID,
+	).Scan(&exists)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to check post ownership", "error": err.Error()})
+	}
+	if !exists {
+		return c.JSON(http.StatusForbidden, echo.Map{"message": "You don't have permission to delete this post"})
+	}
 
-// 	// 4) ลบข้อมูลจาก table ที่เกี่ยวข้อง
-// 	tables := []string{"post_categories", "post_ingredients", "ingredients_detail", "instructions"}
-// 	for _, table := range tables {
-// 		rowsAffected, err := ac.AuthService.DBService.DeleteData(table, "post_id=$1", []interface{}{postID})
-// 		if err != nil {
-// 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": fmt.Sprintf("Failed to delete from %s", table), "error": err.Error()})
-// 		}
-// 		fmt.Printf("[DEBUG] Deleted %d rows from %s\n", rowsAffected, table)
-// 	}
+	// 4) ลบข้อมูลจาก table ที่เกี่ยวข้อง
+	tables := []string{"post_categories", "post_ingredients", "ingredients_detail", "instructions"}
+	for _, table := range tables {
+		rowsAffected, err := ac.AuthService.DBService.DeleteData(table, "post_id=$1", []interface{}{postID})
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"message": fmt.Sprintf("Failed to delete from %s", table), "error": err.Error()})
+		}
+		fmt.Printf("[DEBUG] Deleted %d rows from %s\n", rowsAffected, table)
+	}
 
-// 	// 5) ลบโพสต์หลัก
-// 	rowsAffected, err := ac.AuthService.DBService.DeleteData("posts", "post_id=$1", []interface{}{postID})
-// 	if err != nil {
-// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to delete post", "error": err.Error()})
-// 	}
-// 	if rowsAffected == 0 {
-// 		return c.JSON(http.StatusNotFound, echo.Map{"message": "Post not found"})
-// 	}
+	// 5) ลบโพสต์หลัก
+	rowsAffected, err := ac.AuthService.DBService.DeleteData("posts", "post_id=$1", []interface{}{postID})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to delete post", "error": err.Error()})
+	}
+	if rowsAffected == 0 {
+		return c.JSON(http.StatusNotFound, echo.Map{"message": "Post not found"})
+	}
 
-//		return c.JSON(http.StatusOK, echo.Map{"message": "Post deleted successfully"})
-//	}
-
+	return c.JSON(http.StatusOK, echo.Map{"message": "Post deleted successfully"})
+}
 func (ac *AuthController) GetAllPost(c echo.Context) error {
 
 	// 1) ดึง post_ids ทั้งหมด
@@ -203,7 +203,7 @@ func (ac *AuthController) GetAllPost(c echo.Context) error {
 
 		fmt.Println("[DEBUG] Fetching postID:", postID)
 
-		// ✅ ดึงทุกข้อมูลของ post (tags, ingredients, instructions)
+		// ดึงทุกข้อมูลของ post (tags, ingredients, instructions)
 		postData, err := ac.AuthService.DBService.GetPostWithTagsAndDetails(postID)
 		fmt.Println("[DEBUG] Result for postID =", postID, "| postData =", postData, "| err =", err)
 
@@ -212,16 +212,14 @@ func (ac *AuthController) GetAllPost(c echo.Context) error {
 			continue
 		}
 
-		// ✅ ต้องมี user_id ไม่งั้นข้าม
+		// ต้องมี user_id ไม่งั้นข้าม
 		ownerID, ok := postData["user_id"].(int)
 		if !ok {
 			fmt.Println("[ERROR] ownerID missing for post", postID)
 			continue
 		}
 
-		fmt.Println("[DEBUG] ownerID for post", postID, "=", ownerID)
-
-		// ✅ ดึงข้อมูลเจ้าของโพสต์
+		// ดึงข้อมูลเจ้าของโพสต์
 		fields := []string{"user_id", "username", "image_url"}
 		users, err := ac.AuthService.DBService.SelectData(
 			"users",
@@ -235,8 +233,6 @@ func (ac *AuthController) GetAllPost(c echo.Context) error {
 			"",
 		)
 
-		fmt.Println("[DEBUG] SelectData user:", users, "| err =", err)
-
 		if err != nil || len(users) == 0 {
 			fmt.Println("[ERROR] Cannot fetch user info for user_id =", ownerID)
 			continue
@@ -244,10 +240,10 @@ func (ac *AuthController) GetAllPost(c echo.Context) error {
 
 		userData := users[0]
 
-		// ✅ created_at จำเป็นต้องมีใน postData
+		// created_at
 		createdAt := ac.AuthService.DBService.ParseDateTime(postData["created_at"], "Asia/Bangkok")
 
-		// ✅ Owner struct
+		// Owner struct
 		owner := models.OwnerPost{
 			UserID:       ToInt64(userData["user_id"]),
 			ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
@@ -256,7 +252,7 @@ func (ac *AuthController) GetAllPost(c echo.Context) error {
 			CreatedTime:  createdAt.Format("15:04:05"),
 		}
 
-		// ✅ PostDetail struct
+		// PostDetail struct
 		post := models.PostDetail{
 			PostID:          postData["post_id"].(int),
 			MenuName:        fmt.Sprintf("%v", postData["menu_name"]),
@@ -273,12 +269,17 @@ func (ac *AuthController) GetAllPost(c echo.Context) error {
 			post.Star = avg
 		}
 
-		// ✅ รวมข้อมูลลงใน response list
+		// รวมข้อมูลลงใน response list
 		posts = append(posts, models.PostResponse{
 			OwnerPost: owner,
 			Post:      post,
 		})
 	}
+
+	// Sort posts ตาม Star (มาก → น้อย)
+	sort.Slice(posts, func(i, j int) bool {
+		return posts[i].Post.Star > posts[j].Post.Star
+	})
 
 	fmt.Println("[DEBUG] Final posts length:", len(posts))
 
@@ -455,139 +456,139 @@ func (ac *AuthController) GetAllPostByUsername(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"message": "User posts fetched", "posts": posts, "post_count": len(posts)})
 }
 
-// func (ac *AuthController) EditPostByPostID(c echo.Context) error {
-// 	// 1) ตรวจสอบ user_id จาก token
-// 	uid := c.Get("user_id")
-// 	if uid == nil {
-// 		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
-// 	}
-// 	userID, _ := strconv.ParseInt(fmt.Sprintf("%v", uid), 10, 64)
+func (ac *AuthController) EditPostByPostID(c echo.Context) error {
+	// 1) ตรวจสอบ user_id จาก token
+	uid := c.Get("user_id")
+	if uid == nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
+	}
+	userID, _ := strconv.ParseInt(fmt.Sprintf("%v", uid), 10, 64)
 
-// 	// 2) ดึง post_id จาก path param
-// 	postID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-// 	if err != nil {
-// 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid post_id"})
-// 	}
+	// 2) ดึง post_id จาก path param
+	postID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid post_id"})
+	}
 
-// 	// 3) ดึง form params
-// 	formParams, err := c.FormParams()
-// 	if err != nil {
-// 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid form data"})
-// 	}
+	// 3) ดึง form params
+	formParams, err := c.FormParams()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid form data"})
+	}
 
-// 	fields := []string{}
-// 	values := []interface{}{}
+	fields := []string{}
+	values := []interface{}{}
 
-// 	// ตรวจสอบ field หลัก
-// 	if _, ok := formParams["menu_name"]; ok {
-// 		fields = append(fields, "menu_name")
-// 		values = append(values, c.FormValue("menu_name"))
-// 	}
-// 	if _, ok := formParams["story"]; ok {
-// 		fields = append(fields, "story")
-// 		values = append(values, c.FormValue("story"))
-// 	}
+	// ตรวจสอบ field หลัก
+	if _, ok := formParams["menu_name"]; ok {
+		fields = append(fields, "menu_name")
+		values = append(values, c.FormValue("menu_name"))
+	}
+	if _, ok := formParams["story"]; ok {
+		fields = append(fields, "story")
+		values = append(values, c.FormValue("story"))
+	}
 
-// 	// รูปภาพ
-// 	file, _ := c.FormFile("image")
-// 	if file != nil {
-// 		src, err := file.Open()
-// 		if err != nil {
-// 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to open image"})
-// 		}
-// 		defer src.Close()
-// 		imageURL, err := supabaseutil.UploadFile(src, file, userID, "PostImage/post")
-// 		if err != nil {
-// 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to upload image", "error": err.Error()})
-// 		}
-// 		fields = append(fields, "image_url")
-// 		values = append(values, imageURL)
-// 	}
+	// รูปภาพ
+	file, _ := c.FormFile("image")
+	if file != nil {
+		src, err := file.Open()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to open image"})
+		}
+		defer src.Close()
+		imageURL, err := supabaseutil.UploadFile(src, file, userID, "PostImage/post")
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to upload image", "error": err.Error()})
+		}
+		fields = append(fields, "image_url")
+		values = append(values, imageURL)
+	}
 
-// 	// ถ้าไม่มี field หลัก + รูป ส่งมาเลย
-// 	if len(fields) == 0 && file == nil && len(formParams) == 0 {
-// 		return c.JSON(http.StatusBadRequest, echo.Map{"message": "No data to update"})
-// 	}
+	// ถ้าไม่มี field หลัก + รูป ส่งมาเลย
+	if len(fields) == 0 && file == nil && len(formParams) == 0 {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "No data to update"})
+	}
 
-// 	// 4) เริ่ม transaction
-// 	tx, err := ac.AuthService.DBService.DB.Begin()
-// 	if err != nil {
-// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to begin transaction", "error": err.Error()})
-// 	}
-// 	defer tx.Rollback()
+	// 4) เริ่ม transaction
+	tx, err := ac.AuthService.DBService.DB.Begin()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to begin transaction", "error": err.Error()})
+	}
+	defer tx.Rollback()
 
-// 	// 5) update posts table
-// 	if len(fields) > 0 {
-// 		whereCon := fmt.Sprintf("post_id = $%d AND user_id = $%d", len(fields)+1, len(fields)+2)
-// 		valuesWithID := append(values, postID, userID)
-// 		rowsAffected, err := ac.AuthService.DBService.UpdateData("posts", fields, whereCon, valuesWithID)
-// 		if err != nil {
-// 			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to update post", "error": err.Error()})
-// 		}
-// 		if rowsAffected == 0 {
-// 			return c.JSON(http.StatusNotFound, echo.Map{"message": "Post not found or you don't have permission"})
-// 		}
-// 	}
+	// 5) update posts table
+	if len(fields) > 0 {
+		whereCon := fmt.Sprintf("post_id = $%d AND user_id = $%d", len(fields)+1, len(fields)+2)
+		valuesWithID := append(values, postID, userID)
+		rowsAffected, err := ac.AuthService.DBService.UpdateData("posts", fields, whereCon, valuesWithID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to update post", "error": err.Error()})
+		}
+		if rowsAffected == 0 {
+			return c.JSON(http.StatusNotFound, echo.Map{"message": "Post not found or you don't have permission"})
+		}
+	}
 
-// 	// 6) Update categories_tags
-// 	if val, ok := formParams["categories_tags"]; ok {
-// 		var categoryIDs []int
-// 		err := json.Unmarshal([]byte(val[0]), &categoryIDs)
-// 		if err != nil {
-// 			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid categories_tags format"})
-// 		}
-// 		_, _ = tx.Exec("DELETE FROM post_categories WHERE post_id = $1", postID)
-// 		for _, catID := range categoryIDs {
-// 			_, _ = tx.Exec("INSERT INTO post_categories (post_id, category_tag_id) VALUES ($1,$2)", postID, catID)
-// 		}
-// 	}
+	// 6) Update categories_tags
+	if val, ok := formParams["categories_tags"]; ok {
+		var categoryIDs []int
+		err := json.Unmarshal([]byte(val[0]), &categoryIDs)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid categories_tags format"})
+		}
+		_, _ = tx.Exec("DELETE FROM post_categories WHERE post_id = $1", postID)
+		for _, catID := range categoryIDs {
+			_, _ = tx.Exec("INSERT INTO post_categories (post_id, category_tag_id) VALUES ($1,$2)", postID, catID)
+		}
+	}
 
-// 	// 7) Update ingredients_tags
-// 	if val, ok := formParams["ingredients_tags"]; ok {
-// 		var ingTagIDs []int
-// 		err := json.Unmarshal([]byte(val[0]), &ingTagIDs)
-// 		if err != nil {
-// 			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid ingredients_tags format"})
-// 		}
-// 		_, _ = tx.Exec("DELETE FROM post_ingredients WHERE post_id = $1", postID)
-// 		for _, ingID := range ingTagIDs {
-// 			_, _ = tx.Exec("INSERT INTO post_ingredients (post_id, ingredient_tag_id) VALUES ($1,$2)", postID, ingID)
-// 		}
-// 	}
+	// 7) Update ingredients_tags
+	if val, ok := formParams["ingredients_tags"]; ok {
+		var ingTagIDs []int
+		err := json.Unmarshal([]byte(val[0]), &ingTagIDs)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid ingredients_tags format"})
+		}
+		_, _ = tx.Exec("DELETE FROM post_ingredients WHERE post_id = $1", postID)
+		for _, ingID := range ingTagIDs {
+			_, _ = tx.Exec("INSERT INTO post_ingredients (post_id, ingredient_tag_id) VALUES ($1,$2)", postID, ingID)
+		}
+	}
 
-// 	// 8) Update ingredients details
-// 	if val, ok := formParams["ingredients"]; ok {
-// 		var ingredients []string
-// 		err := json.Unmarshal([]byte(val[0]), &ingredients)
-// 		if err != nil {
-// 			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid ingredients format"})
-// 		}
-// 		_, _ = tx.Exec("DELETE FROM ingredients_detail WHERE post_id = $1", postID)
-// 		for _, ing := range ingredients {
-// 			_, _ = tx.Exec("INSERT INTO ingredients_detail (post_id, detail) VALUES ($1,$2)", postID, ing)
-// 		}
-// 	}
+	// 8) Update ingredients details
+	if val, ok := formParams["ingredients"]; ok {
+		var ingredients []string
+		err := json.Unmarshal([]byte(val[0]), &ingredients)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid ingredients format"})
+		}
+		_, _ = tx.Exec("DELETE FROM ingredients_detail WHERE post_id = $1", postID)
+		for _, ing := range ingredients {
+			_, _ = tx.Exec("INSERT INTO ingredients_detail (post_id, detail) VALUES ($1,$2)", postID, ing)
+		}
+	}
 
-// 	// 9) Update instructions
-// 	if val, ok := formParams["instructions"]; ok {
-// 		var instructions []string
-// 		err := json.Unmarshal([]byte(val[0]), &instructions)
-// 		if err != nil {
-// 			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid instructions format"})
-// 		}
-// 		_, _ = tx.Exec("DELETE FROM instructions WHERE post_id = $1", postID)
-// 		for i, step := range instructions {
-// 			_, _ = tx.Exec("INSERT INTO instructions (post_id, step_number, detail) VALUES ($1,$2,$3)", postID, i+1, step)
-// 		}
-// 	}
+	// 9) Update instructions
+	if val, ok := formParams["instructions"]; ok {
+		var instructions []string
+		err := json.Unmarshal([]byte(val[0]), &instructions)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid instructions format"})
+		}
+		_, _ = tx.Exec("DELETE FROM instructions WHERE post_id = $1", postID)
+		for i, step := range instructions {
+			_, _ = tx.Exec("INSERT INTO instructions (post_id, step_number, detail) VALUES ($1,$2,$3)", postID, i+1, step)
+		}
+	}
 
-// 	// commit transaction
-// 	if err := tx.Commit(); err != nil {
-// 		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to commit transaction", "error": err.Error()})
-// 	}
+	// commit transaction
+	if err := tx.Commit(); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to commit transaction", "error": err.Error()})
+	}
 
-// 	return c.JSON(http.StatusOK, echo.Map{"message": "Post updated successfully"})
-// }
+	return c.JSON(http.StatusOK, echo.Map{"message": "Post updated successfully"})
+}
 
 func (ac *AuthController) GetPostByPostID(c echo.Context) error {
 	// read post_id from path param
@@ -895,6 +896,7 @@ func (ac *AuthController) CreatePost(c echo.Context) error {
 	userData := users[0]
 
 	owner := models.OwnerPost{
+		UserID:       userData["user_id"].(int64),
 		ProfileImage: fmt.Sprintf("%v", userData["profile_image"]),
 		Username:     fmt.Sprintf("%v", userData["username"]),
 		CreatedDate:  createdAt.Format("2006-01-02"),
