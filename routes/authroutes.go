@@ -20,11 +20,12 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	e.POST("/register", authController.Register)
 	e.POST("/login", authController.Login)
 
-	e.GET("/getallpost", authController.GetAllPost)                     //list all post (include post content and user info)
-	e.GET("/searchpost/:name", authController.SeachPost)                //searchpost by name
-	e.GET("/getallpost/:username", authController.GetAllPostByUsername) //get all post by username
-	e.GET("/getpostbypostid/:id", authController.GetPostByPostID)       //หน้าดู post คนอื่น
-	e.GET("/userprofile/:id", authController.GetUserProfileByID)        //หน้าดู profile คนอื่นจาก user profile
+	e.GET("/getallpost", authController.GetAllPost)                       //list all post (include post content and user info)
+	e.GET("/searchpost/:name", authController.SeachPost)                  //searchpost by name
+	e.GET("/getallpost/:username", authController.GetAllPostByUsername)   //get all post by username
+	e.GET("/getpostbypostid/:id", authController.GetPostByPostID)         //หน้าดู post คนอื่น
+	e.GET("/userprofile/:id", authController.GetUserProfileByID)          //หน้าดู profile คนอื่นจาก user profile
+	e.GET("/getcommentsbypostid/:id", authController.GetCommentsByPostID) //หน้าดู comment ของ post นั้นๆ
 	// Google OAuth routes
 	e.GET("/auth/google", controllers.GoogleLogin)
 	e.GET("/auth/google/callback", controllers.GoogleCallback)
@@ -44,14 +45,14 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	// Get current user info
 	// api.GET("/me", controllers.GetCurrentUser)
 	//api.GET("/userprofile", controllers.GetUserProfile)
-	api.GET("/getalluser", authController.GetAllUser)              //หน้า show user profile (ของเรา)
-	api.GET("/userprofile", authController.GetUserProfile)         //หน้า show user profile (ของเรา)
-	api.GET("/userprofile/:id", authController.GetUserProfileByID) //หน้า show user profile (ของเรา)
-	api.PUT("/userprofile", authController.UpdateUserProfile)      //หน้า edit user profile
-	api.POST("/createpost", authController.CreatePost)             //หน้า create post
-	api.GET("/mypost", authController.GetAllMyPost)                //หน้า my profile
-	//api.PUT("/editpost/:id", authController.EditPostByPostID)        ////หน้า edit post (เข้าได้ผ่าน post_id)
-	//api.DELETE("/deletepost/:id", authController.DeletePostbyPostID) //หน้าลบ post ของตัวเอง(เข้าได้ผ่าน post_id)
+	api.GET("/getalluser", authController.GetAllUser)                //หน้า show user profile (ของเรา)
+	api.GET("/userprofile", authController.GetUserProfile)           //หน้า show user profile (ของเรา)
+	api.GET("/userprofile/:id", authController.GetUserProfileByID)   //หน้า show user profile (ของเรา)
+	api.PUT("/userprofile", authController.UpdateUserProfile)        //หน้า edit user profile
+	api.POST("/createpost", authController.CreatePost)               //หน้า create post
+	api.GET("/mypost", authController.GetAllMyPost)                  //หน้า my profile
+	api.PUT("/editpost/:id", authController.EditPostByPostID)        ////หน้า edit post (เข้าได้ผ่าน post_id)
+	api.DELETE("/deletepost/:id", authController.DeletePostbyPostID) //หน้าลบ post ของตัวเอง(เข้าได้ผ่าน post_id)
 
 	// api.POST("/user/ratepost", authController.RatePost)
 
