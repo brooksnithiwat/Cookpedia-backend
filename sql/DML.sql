@@ -37,3 +37,9 @@ VALUES
     (19, 'Baking Ingredient'),
     (20, 'Alcohol')
 ON CONFLICT (ingredient_tag_name) DO NOTHING;
+
+INSERT INTO badges (badge_id, name) VALUES
+(1, 'first post'),
+(2, 'got 5 star rate'),
+(3, '10 recipe posted'),
+(4, '25 recipe posted')
