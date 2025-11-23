@@ -83,6 +83,4 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	api.GET("/getallfollowerdetail/:id", authController.GetAllFollowerDetail)   //ใช้บอกข้อมูลคนฟอล รูปโปรโฟล์ ชื่อ　นามสกุล
 	api.GET("/getallfollowingdetail/:id", authController.GetAllFollowingDetail) //ใช้บอกข้อมูลคนที่ฟอล รูปโปรโฟล์ ชื่อ　นามสกุล
 
-
-
 }
