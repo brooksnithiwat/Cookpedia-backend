@@ -65,13 +65,22 @@ func Init(e *echo.Echo, authController *controllers.AuthController) {
 	api.GET("/getallfavoritepost", authController.GetAllFavoritePost)
 
 	//ratings
-	api.POST("/ratepost", authController.RatePost)
-	api.GET("/getratepost", authController.GetRatePost) //ไม่ได้ใช้ เอามาเทสเฉยๆ
+	api.POST("/ratepost", authController.RatePost)                //ratepost
+	api.GET("/getratepost", authController.GetRatePost)           //ไม่ได้ใช้ เอามาเทสดู post ทั้วหมดที่โดน rate เฉยๆ
+	api.GET("/getratescore/:postId", authController.GetRateScore) //ใช้บอกว่ารอบที่แล้ว user ให้คะแนนโพสกี่คะแนน
 
 	//comment
 	api.GET("/getcommentsbypostid/:id", authController.GetCommentsByPostID)
 	api.POST("/addcomment", authController.AddComment)
 	api.PUT("/editcomment", authController.EditComment)
 	api.DELETE("/deletecommentbycommentid/:id", authController.DeleteCommentByCommentID)
+
+	//follow
+	api.POST("/followuser", authController.FollowUser)                          //ใช้ตอนกดฟอลคนอื่น
+	api.DELETE("/unfollowuser/:id", authController.UnFollowUser)                //ใช้ตอนกดอันฟอลคนอื่น
+	e.GET("/getallfollower/:id", authController.GetAllFollower)                 //ใช้นับจำนวนคนฟอลทั้งหมด
+	e.GET("/getallfollowing/:id", authController.GetAllFollowing)               //ใช้นับจำนวนคนที่ฟอลทั้งหมด
+	api.GET("/getallfollowerdetail/:id", authController.GetAllFollowerDetail)   //ใช้บอกข้อมูลคนฟอล รูปโปรโฟล์ ชื่อ　นามสกุล
+	api.GET("/getallfollowingdetail/:id", authController.GetAllFollowingDetail) //ใช้บอกข้อมูลคนที่ฟอล รูปโปรโฟล์ ชื่อ　นามสกุล
 
 }

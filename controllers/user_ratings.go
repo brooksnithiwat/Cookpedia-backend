@@ -9,6 +9,58 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+func (ac *AuthController) GetRateScore(c echo.Context) error {
+	// ดึง user_id จาก token
+	uid := c.Get("user_id")
+	if uid == nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
+	}
+
+	// ดึง post ID จาก endpoint parameter
+	postID, err := strconv.ParseInt(c.Param("postId"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid post ID"})
+	}
+
+	// แปลง uid เป็น int64
+	uidStr := fmt.Sprintf("%v", uid)
+	userIDInt64, err := strconv.ParseInt(uidStr, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"message": "Invalid user ID"})
+	}
+
+	fieldsUser := []string{"user_id", "post_id", "rate"}
+
+	// SELECT user_id, post_id, rate FROM rating WHERE user_id = $1 AND post_id = $2
+	rateData, err := ac.AuthService.DBService.SelectData(
+		"rating",
+		fieldsUser,
+		true,
+		"user_id = $1 AND post_id = $2",
+		[]interface{}{userIDInt64, postID},
+		false,
+		"",
+		"",
+		"",
+	)
+
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"message": "Failed to get user rate"})
+	}
+
+	// ถ้าหาไม่เจอ
+	if len(rateData) == 0 {
+		return c.JSON(http.StatusOK, echo.Map{
+			"rate": nil, // ผู้ใช้ยังไม่ได้ rate
+		})
+	}
+
+	// return rate
+	return c.JSON(http.StatusOK, echo.Map{
+		"rate": rateData[0]["rate"],
+	})
+}
+
 func (ac *AuthController) RatePost(c echo.Context) error {
 
 	// ✅ ดึง user_id จาก token
