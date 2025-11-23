@@ -7,7 +7,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 )
-
 func (ac *AuthController) GetAllFollowingDetail(c echo.Context) error {
 	// 1) ตรวจสอบ token (protected)
 	uid := c.Get("user_id")

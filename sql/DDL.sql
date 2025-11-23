@@ -108,8 +108,21 @@
 -- CREATE INDEX idx_instructions_post_id ON instructions(post_id);
 
 
-CREATE TABLE IF NOT EXISTS followers (
-    follower_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    following_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    PRIMARY KEY (follower_id, following_id)
+-- CREATE TABLE IF NOT EXISTS followers (
+--     follower_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+--     following_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+--     PRIMARY KEY (follower_id, following_id)
+-- );
+
+
+CREATE TABLE IF NOT EXISTS badges (
+    badge_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS user_badges (
+    user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    badge_id INT NOT NULL REFERENCES badges(badge_id) ON DELETE CASCADE,
+    PRIMARY KEY(user_id, badge_id)
+);
+
