@@ -25,6 +25,7 @@
 --     phone VARCHAR(30),
 --     aboutme TEXT,
 --     image_url TEXT,
+--     badge_id INT DEFAULT 0,
 --     CONSTRAINT check_provider_values CHECK (provider IN ('local', 'google')),
 --     CONSTRAINT check_local_user_password CHECK (
 --         (provider = 'local' AND password IS NOT NULL) OR 
@@ -125,4 +126,5 @@ CREATE TABLE IF NOT EXISTS user_badges (
     badge_id INT NOT NULL REFERENCES badges(badge_id) ON DELETE CASCADE,
     PRIMARY KEY(user_id, badge_id)
 );
+
 
