@@ -57,6 +57,10 @@ func (ac *AuthController) UpdateUserProfile(c echo.Context) error {
 		fields = append(fields, "aboutme")
 		values = append(values, c.FormValue("aboutme"))
 	}
+	if _, ok := formParams["badge_id"]; ok {
+		fields = append(fields, "badge_id")
+		values = append(values, c.FormValue("badge_id"))
+	}
 
 	// จัดการไฟล์รูป
 	file, err := c.FormFile("image")
@@ -129,7 +133,7 @@ func (ac *AuthController) GetUserProfileByID(c echo.Context) error {
 	}
 
 	// ฟิลด์ที่อยาก select
-	fields := []string{"user_id", "firstname", "lastname", "email", "phone", "aboutme", "image_url"}
+	fields := []string{"user_id", "firstname", "lastname", "email", "phone", "aboutme", "image_url", "badge_id"}
 	whereCon := "user_id = ?"
 	whereArgs := []interface{}{userID}
 
@@ -154,13 +158,14 @@ func (ac *AuthController) GetUserProfileByID(c echo.Context) error {
 		Phone:     row["phone"].(string),
 		AboutMe:   row["aboutme"].(string),
 		ImageURL:  row["image_url"].(string),
+		BadgeID:   row["badge_id"].(int64),
 	}
 
 	return c.JSON(http.StatusOK, profile)
 }
 func (ac *AuthController) GetAllUser(c echo.Context) error {
 	// เลือก field ที่อยากได้
-	fields := []string{"user_id", "username", "firstname", "lastname", "email", "phone", "aboutme", "image_url"}
+	fields := []string{"user_id", "username", "firstname", "lastname", "email", "phone", "aboutme", "image_url", "badge_id"}
 
 	// ดึงข้อมูลทั้งหมด ไม่มี where condition
 	results, err := ac.AuthService.DBService.SelectData("users", fields, true, "", nil, false, "", "", "")
@@ -188,6 +193,7 @@ func (ac *AuthController) GetAllUser(c echo.Context) error {
 			Phone:     row["phone"].(string),
 			AboutMe:   row["aboutme"].(string),
 			ImageURL:  row["image_url"].(string),
+			BadgeID:   row["badge_id"].(int64),
 		}
 		users = append(users, user)
 	}
@@ -202,7 +208,7 @@ func (ac *AuthController) GetUserProfile(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"message": "User not authenticated"})
 	}
 
-	fields := []string{"user_id", "username", "firstname", "lastname", "email", "phone", "aboutme", "image_url"}
+	fields := []string{"user_id", "username", "firstname", "lastname", "email", "phone", "aboutme", "image_url", "badge_id"}
 	whereCon := "user_id = ?"
 	whereArgs := []interface{}{userID}
 
@@ -225,6 +231,7 @@ func (ac *AuthController) GetUserProfile(c echo.Context) error {
 		Phone:     row["phone"].(string),
 		AboutMe:   row["aboutme"].(string),
 		ImageURL:  row["image_url"].(string),
+		BadgeID:   row["badge_id"].(int64),
 	}
 
 	return c.JSON(http.StatusOK, profile)

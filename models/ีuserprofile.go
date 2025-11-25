@@ -9,4 +9,5 @@ type UserProfile struct {
 	Phone     string `json:"phone" form:"phone"`
 	AboutMe   string `json:"aboutme" form:"aboutme"`
 	ImageURL  string `json:"image_url" form:"image_url"`
+	BadgeID   int64  `json:"badge_id" form:"badge_id"`
 }
